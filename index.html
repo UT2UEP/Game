@@ -2,74 +2,81 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Clean 3D Space</title>
+    <title>Baseplate</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; color: #00f3ff; }
-        #ui { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; border: 1px solid #00f3ff; z-index: 10; }
-        input, button { padding: 6px; margin-top: 5px; background: #111; color: #00f3ff; border: 1px solid #00f3ff; border-radius: 4px; }
-        button { cursor: pointer; background: #ff007f; color: #fff; border: none; font-weight: bold; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background: #ff007f; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
+        #menu {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(255, 255, 255, 0.85); color: #222;
+            padding: 10px 14px; border-radius: 6px; font-size: 13px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+        input { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; width: 130px; }
+        button { padding: 4px 10px; background: #2b2b2b; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #444; }
+        #dot {
+            position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+            background: rgba(0,0,0,0.5); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+        }
     </style>
-    <!-- Three.js для 3D та PeerJS для гри вдвох -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-<div id="ui">
-    <div><b>ПЛЕЙС ДЛЯ ДВОХ</b></div>
-    <div style="font-size: 12px; color: #aaa; margin: 5px 0;">Клікни по екрану → WASD для ходьби</div>
-    <div>Твій ID: <b id="my-id" style="color:#ff007f;">Підключення...</b></div>
-    <input type="text" id="friend-id" placeholder="ID друга"><br>
-    <button onclick="connectToFriend()">Підключитися</button>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #0f0;"></div>
+<div id="menu">
+    <div>ID: <b id="my-id">...</b></div>
+    <div style="margin-top: 6px;">
+        <input type="text" id="friend-id" placeholder="ID друга">
+        <button onclick="connect()">OK</button>
+    </div>
+    <div id="status" style="margin-top: 4px; color: #555; font-size: 11px;">WASD — ходити | Shift — біг | Space — стрибок</div>
 </div>
-
-<div id="crosshair"></div>
+<div id="dot"></div>
 
 <script>
-    // 1. СЦЕНА, КАМЕРА ТА РЕНДЕР
+    // 1. СВІТЛА СЦЕНА ТА НЕБО
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050510);
-    scene.fog = new THREE.FogExp2(0x050510, 0.03);
+    scene.background = new THREE.Color(0x87CEEB); // Ясне небо
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Освітлення
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
+    // Денне освітлення
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1);
+    scene.add(hemiLight);
 
-    const dirLight = new THREE.DirectionalLight(0x00f3ff, 1);
-    dirLight.position.set(10, 20, 10);
-    scene.add(dirLight);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    sunLight.position.set(30, 50, 20);
+    scene.add(sunLight);
 
-    // 2. ЗЕМЛЯ ТА СТІНИ (щоб не випасти за межі карти)
-    const floorGeo = new THREE.PlaneGeometry(60, 60);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x151525, roughness: 0.8 });
+    // 2. ПЛАТФОРМА (BASEPLATE)
+    const floorSize = 80;
+    const floorGeo = new THREE.BoxGeometry(floorSize, 1, floorSize);
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x6b6e70 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.5;
     scene.add(floor);
 
-    // Сітка на підлозі для краси
-    const grid = new THREE.GridHelper(60, 30, 0xff007f, 0x333355);
+    const grid = new THREE.GridHelper(floorSize, 40, 0x444444, 0x555555);
     grid.position.y = 0.01;
     scene.add(grid);
 
-    // 3. СТАН ТА КЕРУВАННЯ ГРАВЦЕМ
+    // 3. ФІЗИКА ТА КЕРУВАННЯ ЯК У ROBLOX
     const player = {
-        x: 0,
-        z: 5,
-        height: 1.6,
-        speed: 0.12
+        x: 0, y: 1.7, z: 5,
+        vx: 0, vy: 0, vz: 0,
+        eyeHeight: 1.7,
+        walkSpeed: 0.14,
+        runSpeed: 0.26,
+        jumpForce: 0.25,
+        gravity: 0.012,
+        onGround: true
     };
 
-    camera.position.set(player.x, player.height, player.z);
-
-    let yaw = 0;   // Поворот вліво-вправо
-    let pitch = 0; // Поворот вгору-вниз (жорстко обмежений, щоб не перевертатися)
+    let yaw = 0, pitch = 0;
     const keys = {};
 
     renderer.domElement.addEventListener('click', () => {
@@ -78,81 +85,123 @@
 
     document.addEventListener('mousemove', (e) => {
         if (document.pointerLockElement === renderer.domElement) {
-            yaw -= e.movementX * 0.002;
-            pitch -= e.movementY * 0.002;
-            // Обмежуємо кут огляду по вертикалі, щоб камера не крутилася навколо
-            pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+            yaw -= e.movementX * 0.0022;
+            pitch -= e.movementY * 0.0022;
+            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
         }
     });
 
-    document.addEventListener('keydown', (e) => { keys[e.code] = true; });
-    document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    document.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'Space' && player.onGround) {
+            player.vy = player.jumpForce;
+            player.onGround = false;
+        }
+    });
+    document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // 4. МУЛЬТИПЛЕЄР ЧЕРЕЗ PEERJS
-    const peer = new Peer();
+    // 4. МУЛЬТИПЛЕЄР З ФІКСОВАНИМ ID
+    const HOST_ID = 'ut2uep-baseplate-host';
+    let peer = new Peer(HOST_ID);
     let conn = null;
 
-    // Модель друга (інший гравець)
-    const friendMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8, 1.8, 0.8),
-        new THREE.MeshStandardMaterial({ color: 0xff007f, emissive: 0x330015 })
-    );
-    friendMesh.visible = false;
-    scene.add(friendMesh);
+    // Аватар друга (простий стилізований чоловічок)
+    const friendGroup = new THREE.Group();
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.4), new THREE.MeshLambertMaterial({ color: 0x2b65ec }));
+    torso.position.y = 0.9;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0xf5cd30 }));
+    head.position.y = 1.7;
+    friendGroup.add(torso, head);
+    friendGroup.visible = false;
+    scene.add(friendGroup);
 
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
     });
 
-    peer.on('connection', (connection) => {
-        conn = connection;
-        setupConnection();
+    // Якщо ID хоста вже зайнятий (наприклад, ти зайшов другим), створюємо звичайний ID
+    peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                document.getElementById('my-id').innerText = id;
+                document.getElementById('friend-id').value = HOST_ID;
+            });
+            peer.on('connection', (c) => { conn = c; setupConn(); });
+        }
     });
 
-    function connectToFriend() {
-        const friendId = document.getElementById('friend-id').value.trim();
-        if (friendId) {
-            conn = peer.connect(friendId);
-            setupConnection();
+    peer.on('connection', (c) => { conn = c; setupConn(); });
+
+    function connect() {
+        const fid = document.getElementById('friend-id').value.trim();
+        if (fid) {
+            conn = peer.connect(fid);
+            setupConn();
         }
     }
 
-    function setupConnection() {
-        document.getElementById('status').innerText = "З'єднано з другом!";
-        friendMesh.visible = true;
+    function setupConn() {
+        document.getElementById('status').innerText = "Гравець підключений";
+        friendGroup.visible = true;
         conn.on('data', (data) => {
-            friendMesh.position.set(data.x, data.y - 0.9, data.z);
+            friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
+            friendGroup.rotation.y = data.ry;
         });
     }
 
-    // 5. ГОЛОВНИЙ ІГРОВИЙ ЦИКЛ
+    // 5. ІГРОВИЙ ЦИКЛ
     function animate() {
         requestAnimationFrame(animate);
 
-        // Розрахунок напрямку руху відносно погляду камери
-        const moveDir = new THREE.Vector3();
-        if (keys['KeyW']) moveDir.z -= 1;
-        if (keys['KeyS']) moveDir.z += 1;
-        if (keys['KeyA']) moveDir.x -= 1;
-        if (keys['KeyD']) moveDir.x += 1;
-        moveDir.normalize();
-        moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        // Вибір швидкості (Shift = біг)
+        const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? player.runSpeed : player.walkSpeed;
 
-        // Змінюємо позицію з перевіркою меж карти (щоб не вийти в нікуди)
-        player.x += moveDir.x * player.speed;
-        player.z += moveDir.z * player.speed;
-        player.x = Math.max(-28, Math.min(28, player.x));
-        player.z = Math.max(-28, Math.min(28, player.z));
+        // Напрямок руху
+        const input = new THREE.Vector3();
+        if (keys['KeyW']) input.z -= 1;
+        if (keys['KeyS']) input.z += 1;
+        if (keys['KeyA']) input.x -= 1;
+        if (keys['KeyD']) input.x += 1;
 
-        // Оновлюємо положення камери
-        camera.position.set(player.x, player.height, player.z);
+        if (input.length() > 0) {
+            input.normalize();
+            input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            player.vx = input.x * speed;
+            player.vz = input.z * speed;
+        } else {
+            // Плавне гальмування як у Roblox
+            player.vx *= 0.7;
+            player.vz *= 0.7;
+        }
+
+        // Гравітація та стрибок
+        player.vy -= player.gravity;
+        player.x += player.vx;
+        player.y += player.vy;
+        player.z += player.vz;
+
+        // Колізія з підлогою
+        if (player.y <= player.eyeHeight) {
+            player.y = player.eyeHeight;
+            player.vy = 0;
+            player.onGround = true;
+        }
+
+        // Межі платформи
+        const limit = floorSize / 2 - 1;
+        player.x = Math.max(-limit, Math.min(limit, player.x));
+        player.z = Math.max(-limit, Math.min(limit, player.z));
+
+        // Оновлення камери
+        camera.position.set(player.x, player.y, player.z);
         camera.rotation.order = 'YXZ';
         camera.rotation.y = yaw;
         camera.rotation.x = pitch;
 
-        // Відправляємо координати другу
+        // Відправка даних другу
         if (conn && conn.open) {
-            conn.send({ x: player.x, y: player.height, z: player.z });
+            conn.send({ x: player.x, y: player.y, z: player.z, ry: yaw });
         }
 
         renderer.render(scene, camera);
@@ -160,7 +209,6 @@
 
     animate();
 
-    // Адаптація під розмір вікна
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
