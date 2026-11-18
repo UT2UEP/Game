@@ -53,7 +53,7 @@
     <div>ID: <b id="my-id">...</b></div>
     <div style="margin-top: 6px;">
         <input type="text" id="friend-id" placeholder="ID друга">
-        <button onclick="connect()">OK</button>
+        <button id="connect-btn">OK</button>
     </div>
     <div id="status" style="margin-top: 4px; color: #555; font-size: 11px;">ЛКМ — стріляти | Shift — біг | Space — стрибок</div>
 </div>
@@ -66,9 +66,8 @@
 </div>
 
 <script>
-    // НАЗВА ТВОГО ФАЙЛУ СКІНА НА GITHUB
     const MY_SKIN_URL = 'skin.glb'; 
-    const SKIN_SCALE = 1.0; // Якщо модель завелика/замала, зміни тут масштаб (наприклад, 0.5 або 2.0)
+    const SKIN_SCALE = 1.0;
 
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
@@ -219,3 +218,162 @@
     document.addEventListener('mousemove', (e) => {
         if (document.pointerLockElement === renderer.domElement) {
             yaw -= e.movementX * 0.0022;
+            pitch -= e.movementY * 0.0022;
+            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'Space' && player.onGround) {
+            player.vy = player.jumpForce;
+            player.onGround = false;
+        }
+    });
+    document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    // 6. МУЛЬТИПЛЕЄР ТА КНОПКА
+    const HOST_ID = 'ut2uep-baseplate-host';
+    let peer = new Peer(HOST_ID);
+    let conn = null;
+
+    const friendGroup = new THREE.Group();
+    friendGroup.visible = false;
+    scene.add(friendGroup);
+
+    function loadPlayerSkin(url) {
+        const gltfLoader = new THREE.GLTFLoader();
+        gltfLoader.load(url, function (gltf) {
+            while(friendGroup.children.length > 0){ 
+                friendGroup.remove(friendGroup.children[0]); 
+            }
+            const model = gltf.scene;
+            model.scale.set(SKIN_SCALE, SKIN_SCALE, SKIN_SCALE);
+            friendGroup.add(model);
+        }, undefined, function (error) {
+            console.log('Помилка завантаження скіна.');
+        });
+    }
+
+    loadPlayerSkin(MY_SKIN_URL);
+
+    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+
+    peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                document.getElementById('my-id').innerText = id;
+                document.getElementById('friend-id').value = HOST_ID;
+            });
+        }
+    });
+
+    peer.on('connection', (c) => { conn = c; setupConn(); });
+
+    // Підключення через обробник події кнопці (без похибок в області видимості)
+    document.getElementById('connect-btn').addEventListener('click', () => {
+        const fid = document.getElementById('friend-id').value.trim();
+        if (fid) {
+            conn = peer.connect(fid);
+            setupConn();
+        }
+    });
+
+    function setupConn() {
+        document.getElementById('status').innerText = "Гравець підключений";
+        friendGroup.visible = true;
+
+        conn.on('open', () => {
+            conn.send({ type: 'skin', url: MY_SKIN_URL });
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'move') {
+                friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
+                friendGroup.rotation.y = data.ry;
+            } else if (data.type === 'shoot') {
+                const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
+                const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
+                createTracer(start, end, 0xff5500);
+                if (data.hit) takeDamage(data.damage);
+            } else if (data.type === 'skin' && data.url) {
+                loadPlayerSkin(data.url);
+            }
+        });
+
+        conn.on('close', () => {
+            friendGroup.visible = false;
+            document.getElementById('status').innerText = "З'єднання втрачено";
+        });
+    }
+
+    // 7. ГОЛОВНИЙ ЦИКЛ
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? player.runSpeed : player.walkSpeed;
+        const input = new THREE.Vector3();
+        if (keys['KeyW']) input.z -= 1;
+        if (keys['KeyS']) input.z += 1;
+        if (keys['KeyA']) input.x -= 1;
+        if (keys['KeyD']) input.x += 1;
+
+        if (input.length() > 0) {
+            input.normalize();
+            input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            player.vx = input.x * speed;
+            player.vz = input.z * speed;
+        } else {
+            player.vx *= 0.75;
+            player.vz *= 0.75;
+        }
+
+        player.vy -= player.gravity;
+        player.x += player.vx;
+        player.y += player.vy;
+        player.z += player.vz;
+
+        if (player.y <= player.eyeHeight) {
+            player.y = player.eyeHeight;
+            player.vy = 0;
+            player.onGround = true;
+        }
+
+        const limit = floorSize / 2 - 2;
+        player.x = Math.max(-limit, Math.min(limit, player.x));
+        player.z = Math.max(-limit, Math.min(limit, player.z));
+
+        camera.position.set(player.x, player.y, player.z);
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+
+        if (gunRecoil > 0) {
+            gunGroup.position.z = -0.5 + gunRecoil;
+            gunGroup.rotation.x = gunRecoil * 2;
+            gunRecoil *= 0.8;
+            if (gunRecoil < 0.001) {
+                gunRecoil = 0;
+                gunGroup.position.z = -0.5;
+                gunGroup.rotation.x = 0;
+            }
+        }
+
+        if (conn && conn.open) {
+            conn.send({ type: 'move', x: player.x, y: player.y, z: player.z, ry: yaw });
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
