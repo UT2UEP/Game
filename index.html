@@ -67,14 +67,9 @@
 </div>
 
 <script>
-    // Автоматичне визначення правильного шляху до skin.glb на GitHub Pages
-    const pathSegments = window.location.pathname.split('/').filter(Boolean);
-    pathSegments.pop(); // видаляємо index.html або порожній елемент
-    const repoPath = pathSegments.length > 0 ? '/' + pathSegments[0] : '';
-    const MY_SKIN_URL = window.location.origin + repoPath + '/skin.glb';
+    // Використовуємо CDN jsDelivr для гарантованого завантаження файлу без помилок CORS
+    const MY_SKIN_URL = 'https://cdn.jsdelivr.net/gh/UT2UEP/Game@main/skin.glb';
     const SKIN_SCALE = 1.0;
-
-    console.log("Шлях до скіна:", MY_SKIN_URL);
 
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
@@ -161,7 +156,7 @@
     function loadSkinIntoGroup(url, targetGroup) {
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.load(url, function (gltf) {
-            console.log("Скін успішно завантажено!");
+            console.log("Твій скін успішно завантажено!");
             while(targetGroup.children.length > 0){ 
                 targetGroup.remove(targetGroup.children[0]); 
             }
