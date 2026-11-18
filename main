@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Chill Place</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050510; font-family: 'Segoe UI', sans-serif; color: white; }
+        #ui { position: absolute; top: 15px; left: 15px; background: rgba(10, 10, 25, 0.8); padding: 15px; border-radius: 10px; border: 1px solid #00f3ff; box-shadow: 0 0 15px rgba(0, 243, 255, 0.3); z-index: 10; max-width: 300px; }
+        input, button { padding: 8px; margin-top: 5px; border-radius: 5px; border: none; font-size: 14px; }
+        input { background: #1a1a35; color: #00f3ff; border: 1px solid #00f3ff; width: 160px; }
+        button { background: #ff007f; color: white; cursor: pointer; font-weight: bold; }
+        button:hover { background: #ff3399; }
+        #prompt { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 20px; border: 1px solid #ff007f; display: none; font-size: 16px; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #00f3ff; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+    </style>
+    <!-- Підключаємо Three.js (3D графіка) та PeerJS (мультиплеєр без сервера) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+<div id="ui">
+    <div style="font-weight: bold; color: #00f3ff; margin-bottom: 5px;">НЕОНОВИЙ ЧІЛ-ПЛЕЙС</div>
+    <div style="font-size: 12px; color: #aaa;">Клікни по екрану, щоб крутити камерою.<br>WASD — ходити | E — дія | ЛКМ — меч</div>
+    <hr style="border-color: #333;">
+    <div>Твій ID: <b id="my-id" style="color: #ff007f;">Завантаження...</b></div>
+    <input type="text" id="friend-id" placeholder="Встав ID друга">
+    <button onclick="connectToFriend()">Підключитись</button>
+    <div id="status" style="font-size: 12px; margin-top: 5px; color: #0f0;"></div>
+</div>
+
+<div id="prompt">Натисни <b>E</b> для взаємодії</div>
+<div id="crosshair"></div>
+
+<script>
+    // 1. НАЛАШТУВАННЯ СЦЕНИ ТА НЕОНОВОГО ОСВІТЛЕННЯ
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x070714);
+    scene.fog = new THREE.FogExp2(0x070714, 0.025);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0x404080, 1.5);
+    scene.add(ambientLight);
+
+    // Підлога (мокрий асфальт)
+    const floorGeo = new THREE.PlaneGeometry(100, 100);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x111118, roughness: 0.2, metalness: 0.8 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    // 2. БУДІВЛІ НЕОНОВОГО МІСТА
+    function createNeonBuilding(x, z, w, h, d, color) {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x0d0d1a, roughness: 0.5 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x, h / 2, z);
+        scene.add(mesh);
+
+        // Неонова смужка
+        const neonGeo = new THREE.BoxGeometry(w + 0.1, 0.3, d + 0.1);
+        const neonMat = new THREE.MeshBasicMaterial({ color: color });
+        const neon = new THREE.Mesh(neonGeo, neonMat);
+        neon.position.set(x, h - 1, z);
+        scene.add(neon);
+    }
+
+    createNeonBuilding(-12, -15, 8, 20, 8, 0xff007f);
+    createNeonBuilding(14, -18, 10, 25, 10, 0x00f3ff);
+    createNeonBuilding(-15, 12, 9, 18, 9, 0x9d00ff);
+    createNeonBuilding(15, 10, 8, 22, 8, 0x00ff88);
+
+    // 3. ІНТЕРАКТИВНИЙ ДИВАН (координати: x = -4, z = -5)
+    const sofaGroup = new THREE.Group();
+    const sofaMat = new THREE.MeshStandardMaterial({ color: 0x220033 });
+    const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(3, 0.6, 1.2), sofaMat);
+    sofaBase.position.y = 0.3;
+    const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 0.3), sofaMat);
+    sofaBack.position.set(0, 0.6, -0.45);
+    sofaGroup.add(sofaBase, sofaBack);
+    sofaGroup.position.set(-4, 0, -5);
+    scene.add(sofaGroup);
+
+    const sofaLight = new THREE.PointLight(0xff007f, 2, 8);
+    sofaLight.position.set(-4, 2, -5);
+    scene.add(sofaLight);
+
+    // 4. ДУШОВА КАБІНА З ВОДОЮ (координати: x = 4, z = -5)
+    const showerGroup = new THREE.Group();
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.3 });
+    const wall1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 2), glassMat);
+    wall1.position.set(-1, 1.5, 0);
+    const wall2 = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 0.1), glassMat);
+    wall2.position.set(0, 1.5, -1);
+    showerGroup.add(wall1, wall2);
+    showerGroup.position.set(4, 0, -5);
+    scene.add(showerGroup);
+
+    const showerLight = new THREE.PointLight(0x00f3ff, 2, 8);
+    showerLight.position.set(4, 2.5, -5);
+    scene.add(showerLight);
+
+    // Частинки води для душу
+    let showerOn = false;
+    const waterGeo = new THREE.BufferGeometry();
+    const waterCount = 200;
+    const waterPos = new Float32Array(waterCount * 3);
+    for (let i = 0; i < waterCount * 3; i += 3) {
+        waterPos[i] = 4 + (Math.random() - 0.5) * 1.2;
+        waterPos[i+1] = Math.random() * 2.8;
+        waterPos[i+2] = -5 + (Math.random() - 0.5) * 1.2;
+    }
+    waterGeo.setAttribute('position', new THREE.BufferAttribute(waterPos, 3));
+    const waterMat = new THREE.PointsMaterial({ color: 0x00f3ff, size: 0.08 });
+    const waterParticles = new THREE.Points(waterGeo, waterMat);
+    waterParticles.visible = false;
+    scene.add(waterParticles);
+
+    // =========================================================================
+    // 5. ЯК ДОДАТИ СВОЮ 3D-МОДЕЛЬ (.GLB) З ІНТЕРНЕТУ:
+    // Знайди будь-яку 3D модель у форматі .glb (наприклад, залий на GitHub у цей же репозиторій)
+    // Розкоментуй код нижче (прибери /* і */) та впиши назву файлу замість 'model.glb'
+    // =========================================================================
+    /*
+    const loader = new THREE.GLTFLoader();
+    loader.load('model.glb', function(gltf) {
+        const customModel = gltf.scene;
+        customModel.position.set(4, 0, -5); // Координати (зараз стоїть прямо в душі)
+        customModel.scale.set(1, 1, 1);     // Розмір моделі
+        scene.add(customModel);
+    });
+    */
+
+    // 6. МЕЧ У РУЦІ ГРАВЦЯ
+    const swordGeo = new THREE.BoxGeometry(0.08, 0.08, 1.2);
+    const swordMat = new THREE.MeshBasicMaterial({ color: 0xff007f });
+    const sword = new THREE.Mesh(swordGeo, swordMat);
+    sword.position.set(0.4, -0.3, -0.7);
+    camera.add(sword);
+    scene.add(camera);
+
+    let swingTime = 0;
+    window.addEventListener('mousedown', () => {
+        if (document.pointerLockElement === renderer.domElement) swingTime = 1;
+    });
+
+    // 7. КЕРУВАННЯ ГРАВЦЕМ ТА КАМЕРОЮ
+    camera.position.set(0, 1.7, 5);
+    let yaw = 0, pitch = 0;
+    const keys = {};
+    let isSitting = false;
+
+    renderer.domElement.addEventListener('click', () => {
+        renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === renderer.domElement) {
+            yaw -= e.movementX * 0.002;
+            pitch -= e.movementY * 0.002;
+            pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'KeyE') {
+            // Перевірка близькості до дивану
+            if (camera.position.distanceTo(sofaGroup.position) < 3) {
+                isSitting = !isSitting;
+                if (isSitting) camera.position.set(-4, 1.1, -5);
+                else camera.position.set(-4, 1.7, -3.5);
+            }
+            // Перевірка близькості до душу
+            if (camera.position.distanceTo(showerGroup.position) < 3) {
+                showerOn = !showerOn;
+                waterParticles.visible = showerOn;
+            }
+        }
+    });
+    document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    // 8. МУЛЬТИПЛЕЄР ЧЕРЕЗ PEERJS (P2P)
+    const peer = new Peer();
+    let conn = null;
+    const friendMesh = new THREE.Mesh(
+        new THREE.CapsuleGeometry ? new THREE.BoxGeometry(0.6, 1.7, 0.6) : new THREE.BoxGeometry(0.6, 1.7, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x00f3ff, emissive: 0x004455 })
+    );
+    friendMesh.visible = false;
+    scene.add(friendMesh);
+
+    peer.on('open', (id) => {
+        document.getElementById('my-id').innerText = id;
+    });
+
+    peer.on('connection', (connection) => {
+        conn = connection;
+        setupConnection();
+    });
+
+    function connectToFriend() {
+        const friendId = document.getElementById('friend-id').value.trim();
+        if (friendId) {
+            conn = peer.connect(friendId);
+            setupConnection();
+        }
+    }
+
+    function setupConnection() {
+        document.getElementById('status').innerText = "Друг підключений!";
+        friendMesh.visible = true;
+        conn.on('data', (data) => {
+            friendMesh.position.set(data.x, data.y - 0.85, data.z);
+            friendMesh.rotation.y = data.ry;
+        });
+    }
+
+    // 9. ГОЛОВНИЙ ІГРОВИЙ ЦИКЛ
+    const promptEl = document.getElementById('prompt');
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Обертання камери
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+
+        // Рух (якщо не сидимо на дивані)
+        if (!isSitting) {
+            const speed = 0.1;
+            const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+            const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+            if (keys['KeyW']) camera.position.addScaledVector(forward, speed);
+            if (keys['KeyS']) camera.position.addScaledVector(forward, -speed);
+            if (keys['KeyA']) camera.position.addScaledVector(right, -speed);
+            if (keys['KeyD']) camera.position.addScaledVector(right, speed);
+        }
+
+        // Анімація меча
+        if (swingTime > 0) {
+            sword.rotation.x = -Math.sin(swingTime * Math.PI) * 1.2;
+            swingTime -= 0.08;
+            if (swingTime < 0) { swingTime = 0; sword.rotation.x = 0; }
+        }
+
+        // Анімація води в душі
+        if (showerOn) {
+            const positions = waterParticles.geometry.attributes.position.array;
+            for (let i = 1; i < positions.length; i += 3) {
+                positions[i] -= 0.08;
+                if (positions[i] < 0) positions[i] = 2.8;
+            }
+            waterParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // Підказки взаємодії
+        const nearSofa = camera.position.distanceTo(sofaGroup.position) < 3;
+        const nearShower = camera.position.distanceTo(showerGroup.position) < 3;
+        if (nearSofa) {
+            promptEl.style.display = 'block';
+            promptEl.innerHTML = isSitting ? 'Натисни <b>E</b>, щоб встати' : 'Натисни <b>E</b>, щоб сісти на диван';
+        } else if (nearShower) {
+            promptEl.style.display = 'block';
+            promptEl.innerHTML = showerOn ? 'Натисни <b>E</b>, щоб вимкнути душ' : 'Натисни <b>E</b>, щоб увімкнути душ';
+        } else {
+            promptEl.style.display = 'none';
+        }
+
+        // Відправка координат другу
+        if (conn && conn.open) {
+            conn.send({
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z,
+                ry: yaw
+            });
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
