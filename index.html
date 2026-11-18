@@ -67,8 +67,14 @@
 </div>
 
 <script>
-    const MY_SKIN_URL = 'https://raw.githubusercontent.com/UT2UEP/Game/main/skin.glb';
+    // Автоматичне визначення правильного шляху до skin.glb на GitHub Pages
+    const pathSegments = window.location.pathname.split('/').filter(Boolean);
+    pathSegments.pop(); // видаляємо index.html або порожній елемент
+    const repoPath = pathSegments.length > 0 ? '/' + pathSegments[0] : '';
+    const MY_SKIN_URL = window.location.origin + repoPath + '/skin.glb';
     const SKIN_SCALE = 1.0;
+
+    console.log("Шлях до скіна:", MY_SKIN_URL);
 
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
@@ -117,7 +123,7 @@
         gravity: 0.014,
         onGround: false,
         hp: 100,
-        isThirdPerson: true // Починаємо з 3-ї особи
+        isThirdPerson: true 
     };
 
     function updateHPUI() {
@@ -155,6 +161,7 @@
     function loadSkinIntoGroup(url, targetGroup) {
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.load(url, function (gltf) {
+            console.log("Скін успішно завантажено!");
             while(targetGroup.children.length > 0){ 
                 targetGroup.remove(targetGroup.children[0]); 
             }
@@ -162,7 +169,7 @@
             model.scale.set(SKIN_SCALE, SKIN_SCALE, SKIN_SCALE);
             targetGroup.add(model);
         }, undefined, function (error) {
-            console.log('Помилка завантаження скіна.');
+            console.error("Помилка завантаження скіна:", error);
         });
     }
 
@@ -238,10 +245,9 @@
             player.vy = player.jumpForce;
             player.onGround = false;
         }
-        // Перемикання вигляду клавішею V
         if (e.code === 'KeyV') {
             player.isThirdPerson = !player.isThirdPerson;
-            myGroup.visible = player.isThirdPerson; // Свою модель видно лише з 3-ї особи
+            myGroup.visible = player.isThirdPerson;
         }
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
@@ -352,24 +358,18 @@
         player.x = Math.max(-limit, Math.min(limit, player.x));
         player.z = Math.max(-limit, Math.min(limit, player.z));
 
-        // Оновлюємо позицію нашої 3D-моделі на полі
         myGroup.position.set(player.x, player.y, player.z);
         myGroup.rotation.y = yaw;
         myGroup.visible = player.isThirdPerson;
 
-        // Позиціонування камери (3-я або 1-ша особа)
         if (player.isThirdPerson) {
-            // Камера позаду та зверху персонажа
             const dist = 4.5;
             const height = 2.2;
             camera.position.x = player.x + Math.sin(yaw) * dist;
             camera.position.y = player.y + height;
             camera.position.z = player.z + Math.cos(yaw) * dist;
-            
-            // Дивимось трохи вище центру персонажа
             camera.lookAt(player.x, player.y + 1.2, player.z);
         } else {
-            // Вигляд від першої особи
             camera.position.set(player.x, player.y + 1.7, player.z);
             camera.rotation.order = 'YXZ';
             camera.rotation.y = yaw;
