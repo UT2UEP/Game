@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Shooter Baseplate</title>
+    <title>Baseplate Multiplayer</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
         #menu {
@@ -15,7 +15,6 @@
         button { padding: 4px 10px; background: #2b2b2b; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #444; }
         
-        /* Приціл */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 12px; height: 12px;
             transform: translate(-50%, -50%); pointer-events: none; display: none;
@@ -27,27 +26,23 @@
         #crosshair::before { top: 5px; left: 0; width: 12px; height: 2px; }
         #crosshair::after { top: 0; left: 5px; width: 2px; height: 12px; }
 
-        /* Смужка ХП */
         #hp-container {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             width: 220px; height: 18px; background: rgba(0, 0, 0, 0.6);
             border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.3);
         }
-        #hp-bar {
-            width: 100%; height: 100%; background: #2ecc71; transition: width 0.15s, background 0.2s;
-        }
+        #hp-bar { width: 100%; height: 100%; background: #2ecc71; transition: width 0.15s, background 0.2s; }
         #hp-text {
             position: absolute; top: 0; left: 0; width: 100%; text-align: center;
             color: #fff; font-size: 12px; line-height: 18px; font-weight: bold; text-shadow: 1px 1px 2px #000;
         }
-
-        /* Червоний спалах при пораненні */
         #damage-flash {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 0, 0, 0.35); pointer-events: none; opacity: 0; transition: opacity 0.2s;
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -71,6 +66,10 @@
 </div>
 
 <script>
+    // НАЗВА ТВОГО ФАЙЛУ СКІНА НА GITHUB
+    const MY_SKIN_URL = 'skin.glb'; 
+    const SKIN_SCALE = 1.0; // Якщо модель завелика/замала, зміни тут масштаб (наприклад, 0.5 або 2.0)
+
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
     const loader = new THREE.TextureLoader();
@@ -84,12 +83,12 @@
     renderer.outputEncoding = THREE.sRGBEncoding;
     document.body.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.9));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(10, 30, 15);
     scene.add(dirLight);
 
-    // 2. ПЛАТФОРМА ТА УКРИТТЯ (щоб було де ховатись під час перестрілки)
+    // 2. ПЛАТФОРМА ТА УКРИТТЯ
     const floorSize = 100;
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(floorSize, floorSize),
@@ -98,7 +97,6 @@
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // Кілька простих блоків-укриттів на карті
     const boxMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
     const coverPositions = [
         [8, 1.2, 0], [-8, 1.2, 0], [0, 1.2, -10], [0, 1.2, 10], [12, 1.2, -12], [-12, 1.2, 12]
@@ -109,7 +107,7 @@
         scene.add(box);
     });
 
-    // 3. ЗБРОЯ В РУЦІ ГРАВЦЯ (Пістолет)
+    // 3. ЗБРОЯ В РУЦІ
     const gunGroup = new THREE.Group();
     const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.45), new THREE.MeshLambertMaterial({ color: 0x222222 }));
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.09), new THREE.MeshLambertMaterial({ color: 0x4a3525 }));
@@ -146,23 +144,20 @@
     function takeDamage(amount) {
         player.hp -= amount;
         updateHPUI();
-
-        // Спалах екрана при влучанні в тебе
         const flash = document.getElementById('damage-flash');
         flash.style.opacity = '1';
         setTimeout(() => flash.style.opacity = '0', 150);
 
         if (player.hp <= 0) {
-            // Смерть і респавн
             player.hp = 100;
             updateHPUI();
             player.x = (Math.random() - 0.5) * 40;
             player.z = (Math.random() - 0.5) * 40;
-            player.y = 5; // Падає зверху при спавні
+            player.y = 5;
         }
     }
 
-    // 5. КЕРУВАННЯ ТА СТРІЛЬБА (RAYCASTER)
+    // 5. КЕРУВАННЯ ТА СТРІЛЬБА
     let yaw = 0, pitch = 0;
     const keys = {};
     const raycaster = new THREE.Raycaster();
@@ -179,38 +174,29 @@
         document.getElementById('crosshair').style.display = locked ? 'block' : 'none';
     });
 
-    // Постріл на ліву кнопку миші
     window.addEventListener('mousedown', (e) => {
-        if (e.button === 0 && document.pointerLockElement === renderer.domElement) {
-            shoot();
-        }
+        if (e.button === 0 && document.pointerLockElement === renderer.domElement) shoot();
     });
 
     function createTracer(startPos, endPos, color = 0xffff00) {
-        const points = [startPos, endPos];
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: color });
-        const line = new THREE.Line(geo, mat);
+        const geo = new THREE.BufferGeometry().setFromPoints([startPos, endPos]);
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color }));
         scene.add(line);
-        setTimeout(() => scene.remove(line), 80); // Промінь зникає через 80 мс
+        setTimeout(() => scene.remove(line), 80);
     }
 
     function shoot() {
-        gunRecoil = 0.08; // Віддача пістолета
-
-        // Промінь з центру камери
+        gunRecoil = 0.08;
         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
-        // Початкова точка трасера (дуло пістолета у світових координатах)
         const muzzlePos = new THREE.Vector3(0, 0, -0.25);
         barrel.localToWorld(muzzlePos);
 
-        // Перевіряємо влучання в модель друга
         let hitFriend = false;
         let hitPoint = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 60);
 
         if (friendGroup.visible) {
-            const intersects = raycaster.intersectObjects(friendGroup.children);
+            const intersects = raycaster.intersectObjects(friendGroup.children, true);
             if (intersects.length > 0) {
                 hitFriend = true;
                 hitPoint = intersects[0].point;
@@ -219,14 +205,13 @@
 
         createTracer(muzzlePos, hitPoint, hitFriend ? 0xff0000 : 0xffee55);
 
-        // Відправляємо інформацію про постріл та влучання другу
         if (conn && conn.open) {
             conn.send({
                 type: 'shoot',
                 start: muzzlePos,
                 end: hitPoint,
                 hit: hitFriend,
-                damage: 25 // 4 постріли для перемоги
+                damage: 25
             });
         }
     }
@@ -234,151 +219,3 @@
     document.addEventListener('mousemove', (e) => {
         if (document.pointerLockElement === renderer.domElement) {
             yaw -= e.movementX * 0.0022;
-            pitch -= e.movementY * 0.0022;
-            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
-        }
-    });
-
-    document.addEventListener('keydown', (e) => {
-        keys[e.code] = true;
-        if (e.code === 'Space' && player.onGround) {
-            player.vy = player.jumpForce;
-            player.onGround = false;
-        }
-    });
-    document.addEventListener('keyup', (e) => keys[e.code] = false);
-
-    // 6. МУЛЬТИПЛЕЄР
-    const HOST_ID = 'ut2uep-baseplate-host';
-    let peer = new Peer(HOST_ID);
-    let conn = null;
-
-    // Модель друга (голова + тулуб, у які можна стріляти)
-    const friendGroup = new THREE.Group();
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.4), new THREE.MeshLambertMaterial({ color: 0xd63031 }));
-    torso.position.y = 0.85;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0xffeaa7 }));
-    head.position.y = 1.65;
-    friendGroup.add(torso, head);
-    friendGroup.visible = false;
-    scene.add(friendGroup);
-
-    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
-
-    peer.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-            peer = new Peer();
-            peer.on('open', (id) => {
-                document.getElementById('my-id').innerText = id;
-                document.getElementById('friend-id').value = HOST_ID;
-            });
-        }
-    });
-
-    peer.on('connection', (c) => { conn = c; setupConn(); });
-
-    function connect() {
-        const fid = document.getElementById('friend-id').value.trim();
-        if (fid) {
-            conn = peer.connect(fid);
-            setupConn();
-        }
-    }
-
-    function setupConn() {
-        document.getElementById('status').innerText = "Гравець підключений";
-        friendGroup.visible = true;
-
-        conn.on('data', (data) => {
-            if (data.type === 'move') {
-                friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
-                friendGroup.rotation.y = data.ry;
-            } else if (data.type === 'shoot') {
-                // Малюємо постріл друга
-                const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
-                const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
-                createTracer(start, end, 0xff5500);
-
-                // Якщо друг влучив у нас — отримуємо урон
-                if (data.hit) {
-                    takeDamage(data.damage);
-                }
-            }
-        });
-
-        conn.on('close', () => {
-            friendGroup.visible = false;
-            document.getElementById('status').innerText = "З'єднання втрачено";
-        });
-    }
-
-    // 7. ГОЛОВНИЙ ЦИКЛ
-    function animate() {
-        requestAnimationFrame(animate);
-
-        const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? player.runSpeed : player.walkSpeed;
-        const input = new THREE.Vector3();
-        if (keys['KeyW']) input.z -= 1;
-        if (keys['KeyS']) input.z += 1;
-        if (keys['KeyA']) input.x -= 1;
-        if (keys['KeyD']) input.x += 1;
-
-        if (input.length() > 0) {
-            input.normalize();
-            input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-            player.vx = input.x * speed;
-            player.vz = input.z * speed;
-        } else {
-            player.vx *= 0.75;
-            player.vz *= 0.75;
-        }
-
-        player.vy -= player.gravity;
-        player.x += player.vx;
-        player.y += player.vy;
-        player.z += player.vz;
-
-        if (player.y <= player.eyeHeight) {
-            player.y = player.eyeHeight;
-            player.vy = 0;
-            player.onGround = true;
-        }
-
-        const limit = floorSize / 2 - 2;
-        player.x = Math.max(-limit, Math.min(limit, player.x));
-        player.z = Math.max(-limit, Math.min(limit, player.z));
-
-        camera.position.set(player.x, player.y, player.z);
-        camera.rotation.order = 'YXZ';
-        camera.rotation.y = yaw;
-        camera.rotation.x = pitch;
-
-        // Плавне повернення пістолета після віддачі
-        if (gunRecoil > 0) {
-            gunGroup.position.z = -0.5 + gunRecoil;
-            gunGroup.rotation.x = gunRecoil * 2;
-            gunRecoil *= 0.8;
-            if (gunRecoil < 0.001) {
-                gunRecoil = 0;
-                gunGroup.position.z = -0.5;
-                gunGroup.rotation.x = 0;
-            }
-        }
-
-        if (conn && conn.open) {
-            conn.send({ type: 'move', x: player.x, y: player.y, z: player.z, ry: yaw });
-        }
-
-        renderer.render(scene, camera);
-    }
-
-    animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-</script>
-</body>
-</html>
