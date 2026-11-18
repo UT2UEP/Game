@@ -50,12 +50,12 @@
 <div id="damage-flash"></div>
 
 <div id="menu">
-    <div>ID: <b id="my-id">...</b></div>
+    <div>Твій ID: <b id="my-id">...</b></div>
     <div style="margin-top: 6px;">
-        <input type="text" id="friend-id" placeholder="ID друга">
-        <button id="connect-btn">OK</button>
+        <input type="text" id="friend-id" placeholder="ID хоста">
+        <button id="connect-btn">Підключитись</button>
     </div>
-    <div id="status" style="margin-top: 4px; color: #555; font-size: 11px;">ЛКМ — стріляти | Shift — біг | Space — стрибок</div>
+    <div id="status" style="margin-top: 6px; color: #d35400; font-weight: bold; font-size: 11px;">Очікування підключення...</div>
 </div>
 
 <div id="crosshair"></div>
@@ -72,7 +72,7 @@
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
     const loader = new THREE.TextureLoader();
-    const texture = loader.load('space.jpg');
+   const texture = loader.load('space.jpg');
     texture.mapping = THREE.EquirectangularReflectionMapping;
     scene.background = texture;
 
@@ -232,7 +232,7 @@
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // 6. МУЛЬТИПЛЕЄР ТА КНОПКА
+    // 6. МУЛЬТИПЛЕЄР ПЕРЕЗАТАНТАЖЕНИЙ
     const HOST_ID = 'ut2uep-baseplate-host';
     let peer = new Peer(HOST_ID);
     let conn = null;
@@ -257,10 +257,13 @@
 
     loadPlayerSkin(MY_SKIN_URL);
 
-    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+    peer.on('open', (id) => {
+        document.getElementById('my-id').innerText = id;
+    });
 
     peer.on('error', (err) => {
         if (err.type === 'unavailable-id') {
+            // Якщо хост із таким ID вже зайнятий, створюємо звичайне підключення
             peer = new Peer();
             peer.on('open', (id) => {
                 document.getElementById('my-id').innerText = id;
@@ -269,9 +272,13 @@
         }
     });
 
-    peer.on('connection', (c) => { conn = c; setupConn(); });
+    // Коли хтось підключається до тебе (якщо ти хост)
+    peer.on('connection', (c) => {
+        conn = c;
+        setupConn();
+    });
 
-    // Підключення через обробник події кнопці (без похибок в області видимості)
+    // Кнопка підключення до друга
     document.getElementById('connect-btn').addEventListener('click', () => {
         const fid = document.getElementById('friend-id').value.trim();
         if (fid) {
@@ -281,10 +288,12 @@
     });
 
     function setupConn() {
-        document.getElementById('status').innerText = "Гравець підключений";
-        friendGroup.visible = true;
+        if (!conn) return;
 
         conn.on('open', () => {
+            document.getElementById('statusinnerText = "Гравець підключений!"');
+            document.getElementById('status').style.color = "#2ecc71";
+            friendGroup.visible = true;
             conn.send({ type: 'skin', url: MY_SKIN_URL });
         });
 
@@ -292,6 +301,7 @@
             if (data.type === 'move') {
                 friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
                 friendGroup.rotation.y = data.ry;
+                friendGroup.visible = true;
             } else if (data.type === 'shoot') {
                 const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
                 const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
@@ -305,6 +315,7 @@
         conn.on('close', () => {
             friendGroup.visible = false;
             document.getElementById('status').innerText = "З'єднання втрачено";
+            document.getElementById('status').style.color = "#e74c3c";
         });
     }
 
