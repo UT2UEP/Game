@@ -2,14 +2,14 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Baseplate</title>
+    <title>Custom Baseplate</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
         #menu {
             position: absolute; top: 10px; left: 10px;
             background: rgba(255, 255, 255, 0.85); color: #222;
             padding: 10px 14px; border-radius: 6px; font-size: 13px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: opacity 0.3s;
         }
         input { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; width: 130px; }
         button { padding: 4px 10px; background: #2b2b2b; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
@@ -17,6 +17,7 @@
         #dot {
             position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
             background: rgba(0,0,0,0.5); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+            display: none; /* Ховається, коли меню активне */
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -31,56 +32,83 @@
         <button onclick="connect()">OK</button>
     </div>
     <div id="status" style="margin-top: 4px; color: #555; font-size: 11px;">WASD — ходити | Shift — біг | Space — стрибок</div>
+    <div style="margin-top: 6px; font-size: 11px; color: blue; cursor: pointer;" onclick="toggleInstructions()">[Як грати вдвох?]</div>
+    <div id="instructions" style="display:none; margin-top: 5px; font-size: 10px; color: #666;">
+        1. Ти перший заходиш (твій ID завжди ut2uep-host, якщо вільно).<br>
+        2. Друг заходить, у нього в полі вводу автоматично з'явиться твій ID.<br>
+        3. Друг тисне "OK". Все.<br>
+        4. Якщо ви обоє бачите "...", перезавантажте сторінку.
+    </div>
 </div>
 <div id="dot"></div>
 
 <script>
-    // 1. СВІТЛА СЦЕНА ТА НЕБО
+    // 1. СЦЕНА ТА ФОНОВА КАРТИНКА
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Ясне небо
+    const loader = new THREE.TextureLoader();
+    
+    // --- ЗАМЕНИ ЦЕЙ ЛІНК НА СВІЙ ---
+    // Можеш знайти в Google картинку "cubemap skybox" або "panoramic background"
+    const texture = loader.load('https://starwalk.space/gallery/images/what-is-space/1920x1080.jpg'); // Приклад: космос/неон
+    
+    texture.mapping = THREE.EquirectangularReflectionMapping; // Робить панораму
+    scene.background = texture;
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding; // Для коректних кольорів текстур
     document.body.appendChild(renderer.domElement);
 
-    // Денне освітлення
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1);
+    // Освітлення
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    sunLight.position.set(30, 50, 20);
-    scene.add(sunLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight.position.set(0, 20, 10);
+    scene.add(dirLight);
 
-    // 2. ПЛАТФОРМА (BASEPLATE)
-    const floorSize = 80;
-    const floorGeo = new THREE.BoxGeometry(floorSize, 1, floorSize);
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0x6b6e70 });
+    // 2. ЧИСТА ПЛАТФОРМА (без сітки)
+    const floorSize = 100; // Зробили трохи більше
+    const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize);
+    // Стандартний сірий колір підлоги, без GridHelper
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x999999 }); 
     const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.position.y = -0.5;
+    floor.rotation.x = -Math.PI / 2; // Кладемо горизонтально
+    floor.position.y = -0.1; // Трохи нижче нуля
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(floorSize, 40, 0x444444, 0x555555);
-    grid.position.y = 0.01;
-    scene.add(grid);
-
-    // 3. ФІЗИКА ТА КЕРУВАННЯ ЯК У ROBLOX
+    // 3. ФІЗИКА ТА КЕРУВАННЯ
     const player = {
         x: 0, y: 1.7, z: 5,
         vx: 0, vy: 0, vz: 0,
         eyeHeight: 1.7,
-        walkSpeed: 0.14,
-        runSpeed: 0.26,
-        jumpForce: 0.25,
-        gravity: 0.012,
-        onGround: true
+        walkSpeed: 0.15,
+        runSpeed: 0.3,
+        jumpForce: 0.28,
+        gravity: 0.014,
+        onGround: false
     };
 
     let yaw = 0, pitch = 0;
     const keys = {};
+    let menuVisible = true;
 
     renderer.domElement.addEventListener('click', () => {
         renderer.domElement.requestPointerLock();
+        if (menuVisible) {
+            document.getElementById('menu').style.opacity = '0';
+            document.getElementById('dot').style.display = 'block';
+            menuVisible = false;
+        }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+        if (!document.pointerLockElement) {
+            document.getElementById('menu').style.opacity = '1';
+            document.getElementById('dot').style.display = 'none';
+            menuVisible = true;
+        }
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -97,19 +125,29 @@
             player.vy = player.jumpForce;
             player.onGround = false;
         }
+        if (e.code === 'KeyR') { // Кнопка R для респавна, якщо застряг
+            player.x = 0; player.y = player.eyeHeight; player.z = 5;
+            player.vx = 0; player.vy = 0; player.vz = 0;
+        }
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // 4. МУЛЬТИПЛЕЄР З ФІКСОВАНИМ ID
+    function toggleInstructions() {
+        const instr = document.getElementById('instructions');
+        if (instr.style.display === 'none') instr.style.display = 'block';
+        else instr.style.display = 'none';
+    }
+
+    // 4. МУЛЬТИПЛЕЄР
     const HOST_ID = 'ut2uep-baseplate-host';
     let peer = new Peer(HOST_ID);
     let conn = null;
 
-    // Аватар друга (простий стилізований чоловічок)
     const friendGroup = new THREE.Group();
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.4), new THREE.MeshLambertMaterial({ color: 0x2b65ec }));
+    // Робимо друга трохи більш помітним на фоні картинки
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.4), new THREE.MeshLambertMaterial({ color: 0xff0000 }));
     torso.position.y = 0.9;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0xf5cd30 }));
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0xffff00 }));
     head.position.y = 1.7;
     friendGroup.add(torso, head);
     friendGroup.visible = false;
@@ -119,7 +157,6 @@
         document.getElementById('my-id').innerText = id;
     });
 
-    // Якщо ID хоста вже зайнятий (наприклад, ти зайшов другим), створюємо звичайний ID
     peer.on('error', (err) => {
         if (err.type === 'unavailable-id') {
             peer = new Peer();
@@ -127,7 +164,6 @@
                 document.getElementById('my-id').innerText = id;
                 document.getElementById('friend-id').value = HOST_ID;
             });
-            peer.on('connection', (c) => { conn = c; setupConn(); });
         }
     });
 
@@ -148,16 +184,15 @@
             friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
             friendGroup.rotation.y = data.ry;
         });
+        // Додаємо надійність: якщо зв'язок розірвано, ховаємо друга
+        conn.on('close', () => { friendGroup.visible = false; document.getElementById('status').innerText = "З'єднання втрачено"; });
     }
 
     // 5. ІГРОВИЙ ЦИКЛ
     function animate() {
         requestAnimationFrame(animate);
 
-        // Вибір швидкості (Shift = біг)
         const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? player.runSpeed : player.walkSpeed;
-
-        // Напрямок руху
         const input = new THREE.Vector3();
         if (keys['KeyW']) input.z -= 1;
         if (keys['KeyS']) input.z += 1;
@@ -170,36 +205,32 @@
             player.vx = input.x * speed;
             player.vz = input.z * speed;
         } else {
-            // Плавне гальмування як у Roblox
-            player.vx *= 0.7;
-            player.vz *= 0.7;
+            player.vx *= 0.75; // Трохи повільніша зупинка
+            player.vz *= 0.75;
         }
 
-        // Гравітація та стрибок
         player.vy -= player.gravity;
         player.x += player.vx;
         player.y += player.vy;
         player.z += player.vz;
 
-        // Колізія з підлогою
+        // Підлога
         if (player.y <= player.eyeHeight) {
             player.y = player.eyeHeight;
             player.vy = 0;
             player.onGround = true;
         }
 
-        // Межі платформи
-        const limit = floorSize / 2 - 1;
+        // Межі (збільшили, щоб відповідало розміру підлоги)
+        const limit = floorSize / 2 - 2;
         player.x = Math.max(-limit, Math.min(limit, player.x));
         player.z = Math.max(-limit, Math.min(limit, player.z));
 
-        // Оновлення камери
         camera.position.set(player.x, player.y, player.z);
         camera.rotation.order = 'YXZ';
         camera.rotation.y = yaw;
         camera.rotation.x = pitch;
 
-        // Відправка даних другу
         if (conn && conn.open) {
             conn.send({ x: player.x, y: player.y, z: player.z, ry: yaw });
         }
