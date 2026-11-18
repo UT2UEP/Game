@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Baseplate Multiplayer</title>
+    <title>Baseplate Multiplayer 3rd Person</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
         #menu {
@@ -56,6 +56,7 @@
         <button id="connect-btn">Підключитись</button>
     </div>
     <div id="status" style="margin-top: 6px; color: #d35400; font-weight: bold; font-size: 11px;">Очікування підключення...</div>
+    <div style="margin-top: 4px; color: #555; font-size: 10px;">V — змінити вигляд (1/3 особа)</div>
 </div>
 
 <div id="crosshair"></div>
@@ -106,30 +107,17 @@
         scene.add(box);
     });
 
-    // 3. ЗБРОЯ В РУЦІ
-    const gunGroup = new THREE.Group();
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.45), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.09), new THREE.MeshLambertMaterial({ color: 0x4a3525 }));
-    handle.position.set(0, -0.1, 0.12);
-    handle.rotation.x = 0.25;
-    gunGroup.add(barrel, handle);
-    gunGroup.position.set(0.32, -0.25, -0.5);
-    camera.add(gunGroup);
-    scene.add(camera);
-
-    let gunRecoil = 0;
-
     // 4. ГРАВЕЦЬ ТА ЗДОРОВ'Я
     const player = {
-        x: 0, y: 1.7, z: 15,
+        x: 0, y: 0, z: 15,
         vx: 0, vy: 0, vz: 0,
-        eyeHeight: 1.7,
         walkSpeed: 0.15,
         runSpeed: 0.28,
         jumpForce: 0.28,
         gravity: 0.014,
         onGround: false,
-        hp: 100
+        hp: 100,
+        isThirdPerson: true // Починаємо з 3-ї особи
     };
 
     function updateHPUI() {
@@ -155,6 +143,30 @@
             player.y = 5;
         }
     }
+
+    // Моделі гравців (своя і друга)
+    const myGroup = new THREE.Group();
+    scene.add(myGroup);
+
+    const friendGroup = new THREE.Group();
+    friendGroup.visible = false;
+    scene.add(friendGroup);
+
+    function loadSkinIntoGroup(url, targetGroup) {
+        const gltfLoader = new THREE.GLTFLoader();
+        gltfLoader.load(url, function (gltf) {
+            while(targetGroup.children.length > 0){ 
+                targetGroup.remove(targetGroup.children[0]); 
+            }
+            const model = gltf.scene;
+            model.scale.set(SKIN_SCALE, SKIN_SCALE, SKIN_SCALE);
+            targetGroup.add(model);
+        }, undefined, function (error) {
+            console.log('Помилка завантаження скіна.');
+        });
+    }
+
+    loadSkinIntoGroup(MY_SKIN_URL, myGroup);
 
     // 5. КЕРУВАННЯ ТА СТРІЛЬБА
     let yaw = 0, pitch = 0;
@@ -185,11 +197,8 @@
     }
 
     function shoot() {
-        gunRecoil = 0.08;
         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-        const muzzlePos = new THREE.Vector3(0, 0, -0.25);
-        barrel.localToWorld(muzzlePos);
+        const startPos = camera.position.clone();
 
         let hitFriend = false;
         let hitPoint = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 60);
@@ -202,12 +211,12 @@
             }
         }
 
-        createTracer(muzzlePos, hitPoint, hitFriend ? 0xff0000 : 0xffee55);
+        createTracer(startPos, hitPoint, hitFriend ? 0xff0000 : 0xffee55);
 
         if (conn && conn.open) {
             conn.send({
                 type: 'shoot',
-                start: muzzlePos,
+                start: startPos,
                 end: hitPoint,
                 hit: hitFriend,
                 damage: 25
@@ -219,7 +228,7 @@
         if (document.pointerLockElement === renderer.domElement) {
             yaw -= e.movementX * 0.0022;
             pitch -= e.movementY * 0.0022;
-            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+            pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
         }
     });
 
@@ -229,6 +238,11 @@
             player.vy = player.jumpForce;
             player.onGround = false;
         }
+        // Перемикання вигляду клавішею V
+        if (e.code === 'KeyV') {
+            player.isThirdPerson = !player.isThirdPerson;
+            myGroup.visible = player.isThirdPerson; // Свою модель видно лише з 3-ї особи
+        }
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
 
@@ -236,26 +250,6 @@
     const HOST_ID = 'ut2uep-baseplate-host';
     let peer = new Peer(HOST_ID);
     let conn = null;
-
-    const friendGroup = new THREE.Group();
-    friendGroup.visible = false;
-    scene.add(friendGroup);
-
-    function loadPlayerSkin(url) {
-        const gltfLoader = new THREE.GLTFLoader();
-        gltfLoader.load(url, function (gltf) {
-            while(friendGroup.children.length > 0){ 
-                friendGroup.remove(friendGroup.children[0]); 
-            }
-            const model = gltf.scene;
-            model.scale.set(SKIN_SCALE, SKIN_SCALE, SKIN_SCALE);
-            friendGroup.add(model);
-        }, undefined, function (error) {
-            console.log('Помилка завантаження скіна.');
-        });
-    }
-
-    loadPlayerSkin(MY_SKIN_URL);
 
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
@@ -287,7 +281,6 @@
     function setupConn() {
         if (!conn) return;
 
-        // Коли з'єднання встановлено (для того, хто підключається)
         conn.on('open', () => {
             document.getElementById('status').innerText = "Гравець підключений!";
             document.getElementById('status').style.color = "#2ecc71";
@@ -295,7 +288,6 @@
             conn.send({ type: 'skin', url: MY_SKIN_URL });
         });
 
-        // На випадок якщо з'єднання вже відкрите
         if (conn.open) {
             document.getElementById('status').innerText = "Гравець підключений!";
             document.getElementById('status').style.color = "#2ecc71";
@@ -304,7 +296,7 @@
 
         conn.on('data', (data) => {
             if (data.type === 'move') {
-                friendGroup.position.set(data.x, data.y - player.eyeHeight, data.z);
+                friendGroup.position.set(data.x, data.y, data.z);
                 friendGroup.rotation.y = data.ry;
                 friendGroup.visible = true;
             } else if (data.type === 'shoot') {
@@ -313,7 +305,7 @@
                 createTracer(start, end, 0xff5500);
                 if (data.hit) takeDamage(data.damage);
             } else if (data.type === 'skin' && data.url) {
-                loadPlayerSkin(data.url);
+                loadSkinIntoGroup(data.url, friendGroup);
             }
         });
 
@@ -350,8 +342,8 @@
         player.y += player.vy;
         player.z += player.vz;
 
-        if (player.y <= player.eyeHeight) {
-            player.y = player.eyeHeight;
+        if (player.y <= 0) {
+            player.y = 0;
             player.vy = 0;
             player.onGround = true;
         }
@@ -360,20 +352,28 @@
         player.x = Math.max(-limit, Math.min(limit, player.x));
         player.z = Math.max(-limit, Math.min(limit, player.z));
 
-        camera.position.set(player.x, player.y, player.z);
-        camera.rotation.order = 'YXZ';
-        camera.rotation.y = yaw;
-        camera.rotation.x = pitch;
+        // Оновлюємо позицію нашої 3D-моделі на полі
+        myGroup.position.set(player.x, player.y, player.z);
+        myGroup.rotation.y = yaw;
+        myGroup.visible = player.isThirdPerson;
 
-        if (gunRecoil > 0) {
-            gunGroup.position.z = -0.5 + gunRecoil;
-            gunGroup.rotation.x = gunRecoil * 2;
-            gunRecoil *= 0.8;
-            if (gunRecoil < 0.001) {
-                gunRecoil = 0;
-                gunGroup.position.z = -0.5;
-                gunGroup.rotation.x = 0;
-            }
+        // Позиціонування камери (3-я або 1-ша особа)
+        if (player.isThirdPerson) {
+            // Камера позаду та зверху персонажа
+            const dist = 4.5;
+            const height = 2.2;
+            camera.position.x = player.x + Math.sin(yaw) * dist;
+            camera.position.y = player.y + height;
+            camera.position.z = player.z + Math.cos(yaw) * dist;
+            
+            // Дивимось трохи вище центру персонажа
+            camera.lookAt(player.x, player.y + 1.2, player.z);
+        } else {
+            // Вигляд від першої особи
+            camera.position.set(player.x, player.y + 1.7, player.z);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
         }
 
         if (conn && conn.open) {
