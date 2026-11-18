@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Baseplate Multiplayer 3rd Person</title>
+    <title>Baseplate Statue Edition</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
         #menu {
@@ -56,7 +56,7 @@
         <button id="connect-btn">Підключитись</button>
     </div>
     <div id="status" style="margin-top: 6px; color: #d35400; font-weight: bold; font-size: 11px;">Очікування підключення...</div>
-    <div style="margin-top: 4px; color: #555; font-size: 10px;">V — змінити вигляд (1/3 особа)</div>
+    <div style="margin-top: 4px; color: #555; font-size: 10px;">WASD — рух | ЛКМ — стрільба</div>
 </div>
 
 <div id="crosshair"></div>
@@ -67,9 +67,9 @@
 </div>
 
 <script>
-    // Використовуємо CDN jsDelivr для гарантованого завантаження файлу без помилок CORS
-    const MY_SKIN_URL = 'https://cdn.jsdelivr.net/gh/UT2UEP/Game@main/skin.glb';
-    const SKIN_SCALE = 1.0;
+    // Посилання на твою модель-статую у центрі карти (через CDN jsDelivr для гарантованого завантаження)
+    const STATUE_URL = 'https://cdn.jsdelivr.net/gh/UT2UEP/Game@main/skin.glb';
+    const STATUE_SCALE = 1.5; // Можеш змінити розмір статуї тут
 
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
@@ -108,7 +108,22 @@
         scene.add(box);
     });
 
-    // 4. ГРАВЕЦЬ ТА ЗДОРОВ'Я
+    // 3. СТАТУЯ ПОСЕРЕДИНИ КАРТИ (Твій skin.glb)
+    const statueGroup = new THREE.Group();
+    statueGroup.position.set(0, 0, 0); // Центр карти (0, 0, 0)
+    scene.add(statueGroup);
+
+    const gltfLoader = new THREE.GLTFLoader();
+    gltfLoader.load(STATUE_URL, function (gltf) {
+        const model = gltf.scene;
+        model.scale.set(STATUE_SCALE, STATUE_SCALE, STATUE_SCALE);
+        statueGroup.add(model);
+        console.log("Статую успішно встановлено в центрі карти!");
+    }, undefined, function (error) {
+        console.error("Помилка завантаження статуї:", error);
+    });
+
+    // 4. ГРАВЕЦЬ (КУБИК) ТА ЗДОРОВ'Я
     const player = {
         x: 0, y: 0, z: 15,
         vx: 0, vy: 0, vz: 0,
@@ -117,9 +132,15 @@
         jumpForce: 0.28,
         gravity: 0.014,
         onGround: false,
-        hp: 100,
-        isThirdPerson: true 
+        hp: 100
     };
+
+    // Створюємо візуальний кубик для себе (видно з 3-ї особи)
+    const myCube = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1.8, 1),
+        new THREE.MeshLambertMaterial({ color: 0x3498db }) // Синенький кубик для тебе
+    );
+    scene.add(myCube);
 
     function updateHPUI() {
         const bar = document.getElementById('hp-bar');
@@ -145,30 +166,13 @@
         }
     }
 
-    // Моделі гравців (своя і друга)
-    const myGroup = new THREE.Group();
-    scene.add(myGroup);
-
-    const friendGroup = new THREE.Group();
-    friendGroup.visible = false;
-    scene.add(friendGroup);
-
-    function loadSkinIntoGroup(url, targetGroup) {
-        const gltfLoader = new THREE.GLTFLoader();
-        gltfLoader.load(url, function (gltf) {
-            console.log("Твій скін успішно завантажено!");
-            while(targetGroup.children.length > 0){ 
-                targetGroup.remove(targetGroup.children[0]); 
-            }
-            const model = gltf.scene;
-            model.scale.set(SKIN_SCALE, SKIN_SCALE, SKIN_SCALE);
-            targetGroup.add(model);
-        }, undefined, function (error) {
-            console.error("Помилка завантаження скіна:", error);
-        });
-    }
-
-    loadSkinIntoGroup(MY_SKIN_URL, myGroup);
+    // Кубик для друга
+    const friendCube = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1.8, 1),
+        new THREE.MeshLambertMaterial({ color: 0xe74c3c }) // Червоненький кубик для друга
+    );
+    friendCube.visible = false;
+    scene.add(friendCube);
 
     // 5. КЕРУВАННЯ ТА СТРІЛЬБА
     let yaw = 0, pitch = 0;
@@ -205,8 +209,8 @@
         let hitFriend = false;
         let hitPoint = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 60);
 
-        if (friendGroup.visible) {
-            const intersects = raycaster.intersectObjects(friendGroup.children, true);
+        if (friendCube.visible) {
+            const intersects = raycaster.intersectObject(friendCube, true);
             if (intersects.length > 0) {
                 hitFriend = true;
                 hitPoint = intersects[0].point;
@@ -239,10 +243,6 @@
         if (e.code === 'Space' && player.onGround) {
             player.vy = player.jumpForce;
             player.onGround = false;
-        }
-        if (e.code === 'KeyV') {
-            player.isThirdPerson = !player.isThirdPerson;
-            myGroup.visible = player.isThirdPerson;
         }
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
@@ -285,33 +285,30 @@
         conn.on('open', () => {
             document.getElementById('status').innerText = "Гравець підключений!";
             document.getElementById('status').style.color = "#2ecc71";
-            friendGroup.visible = true;
-            conn.send({ type: 'skin', url: MY_SKIN_URL });
+            friendCube.visible = true;
         });
 
         if (conn.open) {
             document.getElementById('status').innerText = "Гравець підключений!";
             document.getElementById('status').style.color = "#2ecc71";
-            friendGroup.visible = true;
+            friendCube.visible = true;
         }
 
         conn.on('data', (data) => {
             if (data.type === 'move') {
-                friendGroup.position.set(data.x, data.y, data.z);
-                friendGroup.rotation.y = data.ry;
-                friendGroup.visible = true;
+                friendCube.position.set(data.x, data.y + 0.9, data.z);
+                friendCube.rotation.y = data.ry;
+                friendCube.visible = true;
             } else if (data.type === 'shoot') {
                 const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
                 const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
                 createTracer(start, end, 0xff5500);
                 if (data.hit) takeDamage(data.damage);
-            } else if (data.type === 'skin' && data.url) {
-                loadSkinIntoGroup(data.url, friendGroup);
             }
         });
 
         conn.on('close', () => {
-            friendGroup.visible = false;
+            friendCube.visible = false;
             document.getElementById('status').innerText = "З'єднання втрачено";
             document.getElementById('status').style.color = "#e74c3c";
         });
@@ -353,23 +350,17 @@
         player.x = Math.max(-limit, Math.min(limit, player.x));
         player.z = Math.max(-limit, Math.min(limit, player.z));
 
-        myGroup.position.set(player.x, player.y, player.z);
-        myGroup.rotation.y = yaw;
-        myGroup.visible = player.isThirdPerson;
+        // Оновлюємо позицію нашого кубика-гравця
+        myCube.position.set(player.x, player.y + 0.9, player.z);
+        myCube.rotation.y = yaw;
 
-        if (player.isThirdPerson) {
-            const dist = 4.5;
-            const height = 2.2;
-            camera.position.x = player.x + Math.sin(yaw) * dist;
-            camera.position.y = player.y + height;
-            camera.position.z = player.z + Math.cos(yaw) * dist;
-            camera.lookAt(player.x, player.y + 1.2, player.z);
-        } else {
-            camera.position.set(player.x, player.y + 1.7, player.z);
-            camera.rotation.order = 'YXZ';
-            camera.rotation.y = yaw;
-            camera.rotation.x = pitch;
-        }
+        // Камера від 3-ї особи позаду кубика
+        const dist = 5.0;
+        const height = 2.5;
+        camera.position.x = player.x + Math.sin(yaw) * dist;
+        camera.position.y = player.y + height;
+        camera.position.z = player.z + Math.cos(yaw) * dist;
+        camera.lookAt(player.x, player.y + 1.0, player.z);
 
         if (conn && conn.open) {
             conn.send({ type: 'move', x: player.x, y: player.y, z: player.z, ry: yaw });
