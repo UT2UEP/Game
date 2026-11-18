@@ -72,7 +72,7 @@
     // 1. СЦЕНА ТА ОСВІТЛЕННЯ
     const scene = new THREE.Scene();
     const loader = new THREE.TextureLoader();
-   const texture = loader.load('space.jpg');
+    const texture = loader.load('space.jpg');
     texture.mapping = THREE.EquirectangularReflectionMapping;
     scene.background = texture;
 
@@ -232,7 +232,7 @@
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // 6. МУЛЬТИПЛЕЄР ПЕРЕЗАТАНТАЖЕНИЙ
+    // 6. МУЛЬТИПЛЕЄР
     const HOST_ID = 'ut2uep-baseplate-host';
     let peer = new Peer(HOST_ID);
     let conn = null;
@@ -263,7 +263,6 @@
 
     peer.on('error', (err) => {
         if (err.type === 'unavailable-id') {
-            // Якщо хост із таким ID вже зайнятий, створюємо звичайне підключення
             peer = new Peer();
             peer.on('open', (id) => {
                 document.getElementById('my-id').innerText = id;
@@ -272,13 +271,11 @@
         }
     });
 
-    // Коли хтось підключається до тебе (якщо ти хост)
     peer.on('connection', (c) => {
         conn = c;
         setupConn();
     });
 
-    // Кнопка підключення до друга
     document.getElementById('connect-btn').addEventListener('click', () => {
         const fid = document.getElementById('friend-id').value.trim();
         if (fid) {
@@ -290,12 +287,20 @@
     function setupConn() {
         if (!conn) return;
 
+        // Коли з'єднання встановлено (для того, хто підключається)
         conn.on('open', () => {
-            document.getElementById('statusinnerText = "Гравець підключений!"');
+            document.getElementById('status').innerText = "Гравець підключений!";
             document.getElementById('status').style.color = "#2ecc71";
             friendGroup.visible = true;
             conn.send({ type: 'skin', url: MY_SKIN_URL });
         });
+
+        // На випадок якщо з'єднання вже відкрите
+        if (conn.open) {
+            document.getElementById('status').innerText = "Гравець підключений!";
+            document.getElementById('status').style.color = "#2ecc71";
+            friendGroup.visible = true;
+        }
 
         conn.on('data', (data) => {
             if (data.type === 'move') {
