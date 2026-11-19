@@ -93,7 +93,7 @@ g.strokeStyle='#05060f';b.strokeStyle='#000';g.lineWidth=b.lineWidth=4;
 for(const k of[0,256])for(const x of[g,b]){x.beginPath();x.moveTo(k,0);x.lineTo(k,FS);x.moveTo(0,k);x.lineTo(FS,k);x.stroke()}
 e.fillStyle='#000';e.fillRect(0,0,FS,FS);e.strokeStyle='#27d9ff';e.lineWidth=5;e.strokeRect(0,0,FS,FS)}
 const fT=[tex(fc,SRGB),tex(fb),tex(fe,SRGB)];fT.forEach(t=>t.repeat.set(SIZE/8,SIZE/8));
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshStandardMaterial({map:fT[0],bumpMap:fT[1],bumpScale:2,roughnessMap:fT[1],roughness:.75,metalness:.35,emissiveMap:fT[2],emissive:0x27d9ff,emissiveIntensity:1.6,envMapIntensity:.8}));
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshStandardMaterial({map:fT[0],bumpMap:fT[1],bumpScale:.7,roughnessMap:fT[1],roughness:.75,metalness:.35,emissiveMap:fT[2],emissive:0x27d9ff,emissiveIntensity:1.6,envMapIntensity:.8}));
 floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
 // текстура металевих панелей
 const PS=256,pc=cv(PS),pbm=cv(PS);
@@ -106,7 +106,7 @@ const boxes=[],worldMeshes=[floor];
 function addBox(x,y,z,w,h,d,col,emi){
   const g=new THREE.BoxGeometry(w,h,d),uv=g.attributes.uv,dm=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
   for(let f=0;f<6;f++)for(let v=0;v<4;v++){const i=f*4+v;uv.setXY(i,uv.getX(i)*dm[f][0]/3,uv.getY(i)*dm[f][1]/3)}
-  const m=new THREE.Mesh(g,emi?new THREE.MeshStandardMaterial({color:0,emissive:col,emissiveIntensity:emi}):new THREE.MeshStandardMaterial({color:col,map:pT,bumpMap:pB,bumpScale:1.5,roughness:.42,metalness:.6,envMapIntensity:1}));
+  const m=new THREE.Mesh(g,emi?new THREE.MeshStandardMaterial({color:0,emissive:col,emissiveIntensity:emi}):new THREE.MeshStandardMaterial({color:col,map:pT,bumpMap:pB,bumpScale:.5,roughness:.42,metalness:.6,envMapIntensity:1}));
   m.position.set(x,y+h/2,z);m.castShadow=m.receiveShadow=!emi;scene.add(m);worldMeshes.push(m);
   if(!emi)boxes.push({minx:x-w/2,maxx:x+w/2,miny:y,maxy:y+h,minz:z-d/2,maxz:z+d/2});
 }
@@ -216,7 +216,8 @@ function start(){
   updInfo();lockPointer();
 }
 function lockPointer(){renderer.domElement.requestPointerLock()}
-document.addEventListener('pointerlockchange',()=>{
+var skipM=0;
+document.addEventListener('pointerlockchange',()=>{skipM=4;
   const l=document.pointerLockElement===renderer.domElement;
   $('pause').style.display=(!l&&inGame)?'flex':'none';
 });
@@ -228,7 +229,8 @@ addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement)mo
 addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false});
 addEventListener('mousemove',e=>{
   if(document.pointerLockElement!==renderer.domElement)return;
-  const mx=Math.abs(e.movementX)>300?0:e.movementX,my=Math.abs(e.movementY)>300?0:e.movementY;
+  if(skipM>0){skipM--;return}
+  const mx=Math.abs(e.movementX)>120?0:e.movementX,my=Math.abs(e.movementY)>120?0:e.movementY;
   me.yaw-=mx*.0022;me.pitch=Math.max(-1.55,Math.min(1.55,me.pitch-my*.0022));
 });
 
@@ -335,19 +337,42 @@ function fitBox(m){
   });
   return b;
 }
-new THREE.GLTFLoader().load('skin.glb',gltf=>{
-  try{
-    const m=gltf.scene;let b=fitBox(m);const sz=b.getSize(new THREE.Vector3());
-    const ok=!b.isEmpty()&&isFinite(sz.y)&&sz.y>1e-6;
-    m.scale.setScalar(ok?3/sz.y:1);
-    if(ok){b=fitBox(m);const c=b.getCenter(new THREE.Vector3());m.position.set(-c.x,3.1-b.min.y,-c.z)}else m.position.set(0,3.1,0);
-    m.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;o.frustumCulled=false;worldMeshes.push(o);if(o.material){o.material.side=THREE.DoubleSide;o.material.envMapIntensity=1}}});
-    scene.add(m);m.updateMatrixWorld(true);
-    if(gltf.animations.length){statueMixer=new THREE.AnimationMixer(m);statueMixer.clipAction(gltf.animations[0]).play()}
-    statueNote='статуя: ок';
-  }catch(e){statueNote='skin.glb помилка: '+e.message;console.error(e)}
-  updInfo();
-},undefined,e=>{statueNote='skin.glb: '+((e&&e.message)||'не завантажився, перевір назву');console.warn(e);updInfo()});
+function placeStatue(m){
+  let b=fitBox(m);const sz=b.getSize(new THREE.Vector3());
+  const ok=!b.isEmpty()&&isFinite(sz.y)&&sz.y>1e-6;
+  m.scale.setScalar(ok?3/sz.y:1);
+  if(ok){b=fitBox(m);const c=b.getCenter(new THREE.Vector3());m.position.set(-c.x,3.1-b.min.y,-c.z)}else m.position.set(0,3.1,0);
+  m.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;o.frustumCulled=false;worldMeshes.push(o);if(o.material){o.material.side=THREE.DoubleSide;o.material.envMapIntensity=1}}});
+  scene.add(m);m.updateMatrixWorld(true);statueNote='статуя: ок';updInfo();
+}
+// заглушка-прибулець, якщо glb не відкрився
+function alienStatue(){
+  const g=new THREE.Group(),sk=new THREE.MeshStandardMaterial({color:0x6fe08a,roughness:.45,metalness:.1,emissive:0x0b3d1a,emissiveIntensity:.6}),ey=new THREE.MeshStandardMaterial({color:0,roughness:.1,metalness:.8});
+  const part=(geo,mat,x,y,z,sx,sy,sz,rz)=>{const o=new THREE.Mesh(geo,mat);o.position.set(x,y,z);o.scale.set(sx,sy,sz);o.rotation.z=rz||0;o.castShadow=o.receiveShadow=true;g.add(o);worldMeshes.push(o)};
+  const sp=new THREE.SphereGeometry(.5,24,16),cy=new THREE.CylinderGeometry(.07,.05,1,10);
+  part(sp,sk,0,1.05,0,1,1.4,.8);part(sp,sk,0,2.25,0,1.2,1.4,1.1);
+  part(sp,ey,-.3,2.2,-.5,.4,.22,.15,.5);part(sp,ey,.3,2.2,-.5,.4,.22,.15,-.5);
+  part(cy,sk,-.6,1.2,0,1,1.1,1,.25);part(cy,sk,.6,1.2,0,1,1.1,1,-.25);
+  part(cy,sk,-.2,.45,0,1.4,.9,1.4);part(cy,sk,.2,.45,0,1.4,.9,1.4);
+  g.position.set(0,3.1,0);scene.add(g);
+}
+var statueFailed=false;
+function statueFail(e){if(statueFailed)return;statueFailed=true;statueNote='skin.glb: '+((e&&e.message)||e)+' (показую заглушку)';console.warn(e);alienStatue();updInfo()}
+// чистимо glb: прибираємо анімації, морф-цілі й sparse-акцесори (вони ламають старий завантажувач)
+function cleanGLB(buf){
+  const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x46546C67)return buf;
+  const jl=dv.getUint32(12,true),j=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,jl)));
+  delete j.animations;
+  (j.meshes||[]).forEach(m=>{delete m.weights;(m.primitives||[]).forEach(p=>delete p.targets)});
+  (j.nodes||[]).forEach(n=>delete n.weights);(j.accessors||[]).forEach(a=>delete a.sparse);
+  const t=new TextEncoder().encode(JSON.stringify(j)),jt=new Uint8Array(t.length+(4-t.length%4)%4).fill(32);jt.set(t);
+  const rest=new Uint8Array(buf,20+jl),out=new Uint8Array(20+jt.length+rest.length),o=new DataView(out.buffer);
+  o.setUint32(0,0x46546C67,true);o.setUint32(4,2,true);o.setUint32(8,out.length,true);o.setUint32(12,jt.length,true);o.setUint32(16,0x4E4F534A,true);
+  out.set(jt,20);out.set(rest,20+jt.length);return out.buffer;
+}
+fetch('skin.glb').then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer()}).then(buf=>{
+  new THREE.GLTFLoader().parse(cleanGLB(buf),'',g=>{try{placeStatue(g.scene)}catch(e){statueFail(e)}},statueFail);
+}).catch(statueFail);
 
 // ---------- головний цикл ----------
 let prev=performance.now(),sendT=0,bob=0;
