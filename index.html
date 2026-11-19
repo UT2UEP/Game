@@ -34,7 +34,7 @@ button:hover{background:#7483ff}button.alt{background:#2a2e66}
 <button id="bJoin" class="alt">Приєднатися</button>
 <button id="bSolo" class="alt">Грати наодинці</button>
 <div id="st"></div>
-<div class="help">WASD — рух · Shift — біг · Пробіл — стрибок<br>Миша — огляд · ЛКМ — стрільба · Esc — пауза</div>
+<div class="help">WASD — рух · Shift — біг · Пробіл — стрибок<br>Миша — огляд · ЛКМ — стрільба · Esc — пауза · G — графіка</div>
 </div></div>
 
 <div id="pause" class="ov" style="display:none;cursor:pointer"><div class="box"><h1>ПАУЗА</h1><div class="sub">Клікни, щоб повернутись у гру</div><div id="codeShow" style="font-size:22px;letter-spacing:4px;color:#ffd166"></div></div></div>
@@ -42,41 +42,73 @@ button:hover{background:#7483ff}button.alt{background:#2a2e66}
 <div id="hud"><div id="hurt"></div><div id="cross"></div><div id="hp"><div id="hpb"></div></div><div id="feed"></div><div id="info"></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 // ---------- сцена ----------
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+const PR=Math.min(devicePixelRatio,1.5);renderer.setPixelRatio(PR);renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x060818);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,600);camera.rotation.order='YXZ';
 scene.add(camera);
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);if(window.composer)resizeFX()});
 
-scene.add(new THREE.HemisphereLight(0xbfd0ff,0x303050,.9));
-const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(30,60,20);scene.add(sun);
+const SRGB=THREE.sRGBEncoding;
+scene.fog=new THREE.FogExp2(0x0b0e2a,.009);
+scene.add(new THREE.HemisphereLight(0x9db4ff,0x2a2038,.45));
+const sun=new THREE.DirectionalLight(0xfff0dd,2.4);sun.position.set(45,70,30);
+sun.castShadow=true;sun.shadow.mapSize.set(4096,4096);
+Object.assign(sun.shadow.camera,{left:-62,right:62,top:62,bottom:-62,near:10,far:200});
+sun.shadow.bias=-.0004;sun.shadow.normalBias=.05;scene.add(sun);
+const rim=new THREE.DirectionalLight(0x5a7bff,.8);rim.position.set(-40,25,-35);scene.add(rim);
 
-// небо з space.jpg (сфера, що рухається разом з камерою)
-const sky=new THREE.Mesh(new THREE.SphereGeometry(400,48,32),new THREE.MeshBasicMaterial({color:0x888888,side:THREE.BackSide,depthWrite:false,fog:false}));
+// небо (space.jpg) + відображення неба на металі (PMREM)
+const pm=new THREE.PMREMGenerator(renderer);
+function cv(s){const c=document.createElement('canvas');c.width=c.height=s;return c}
+function tex(c,enc){const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;if(enc)t.encoding=enc;return t}
+function grunge(g,s,base,amp){const d=g.createImageData(s,s);for(let i=0;i<d.data.length;i+=4){const v=base+(Math.random()-.5)*amp;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255}g.putImageData(d,0,0)}
+function starTex(){const c=document.createElement('canvas');c.width=1024;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);gr.addColorStop(0,'#05061a');gr.addColorStop(.5,'#1a1440');gr.addColorStop(1,'#05061a');g.fillStyle=gr;g.fillRect(0,0,1024,512);for(let i=0;i<500;i++){g.fillStyle='rgba(255,255,255,'+Math.random()+')';g.fillRect(Math.random()*1024,Math.random()*512,1.5,1.5)}return new THREE.CanvasTexture(c)}
+const sky=new THREE.Mesh(new THREE.SphereGeometry(400,48,32),new THREE.MeshBasicMaterial({side:THREE.BackSide,depthWrite:false,fog:false}));
 scene.add(sky);
-new THREE.TextureLoader().load('space.jpg',t=>{if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;sky.material.map=t;sky.material.color.set(0xffffff);sky.material.needsUpdate=true},undefined,()=>console.warn('space.jpg не знайдено'));
+function applySky(t){t.encoding=SRGB;sky.material.map=t;sky.material.needsUpdate=true;const e=t.clone();e.mapping=THREE.EquirectangularReflectionMapping;e.needsUpdate=true;scene.environment=pm.fromEquirectangular(e).texture}
+applySky(starTex());
+new THREE.TextureLoader().load('space.jpg',applySky,undefined,()=>console.warn('space.jpg не знайдено'));
 
-// підлога
-const SIZE=80,H=SIZE/2;
-const fc=document.createElement('canvas');fc.width=fc.height=128;
-{const g=fc.getContext('2d');g.fillStyle='#2b2f55';g.fillRect(0,0,128,128);g.fillStyle='#343968';g.fillRect(0,0,64,64);g.fillRect(64,64,64,64);g.strokeStyle='#6f7bff';g.lineWidth=2;g.strokeRect(0,0,128,128)}
-const ft=new THREE.CanvasTexture(fc);ft.wrapS=ft.wrapT=THREE.RepeatWrapping;ft.repeat.set(SIZE/4,SIZE/4);ft.anisotropy=8;
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshLambertMaterial({map:ft}));
-floor.rotation.x=-Math.PI/2;scene.add(floor);
+// процедурні PBR-текстури: підлога
+const SIZE=80,H=SIZE/2,FS=512,fc=cv(FS),fb=cv(FS),fe=cv(FS);
+{const g=fc.getContext('2d'),b=fb.getContext('2d'),e=fe.getContext('2d');
+grunge(g,FS,75,60);grunge(b,FS,128,70);g.fillStyle='rgba(30,45,110,.45)';g.fillRect(0,0,FS,FS);
+for(let i=0;i<90;i++){g.strokeStyle='rgba(255,255,255,'+Math.random()*.08+')';g.beginPath();const x=Math.random()*FS,y=Math.random()*FS;g.moveTo(x,y);g.lineTo(x+(Math.random()-.5)*90,y+(Math.random()-.5)*90);g.stroke()}
+g.strokeStyle='#05060f';b.strokeStyle='#000';g.lineWidth=b.lineWidth=4;
+for(const k of[0,256])for(const x of[g,b]){x.beginPath();x.moveTo(k,0);x.lineTo(k,FS);x.moveTo(0,k);x.lineTo(FS,k);x.stroke()}
+e.fillStyle='#000';e.fillRect(0,0,FS,FS);e.strokeStyle='#27d9ff';e.lineWidth=5;e.strokeRect(0,0,FS,FS)}
+const fT=[tex(fc,SRGB),tex(fb),tex(fe,SRGB)];fT.forEach(t=>t.repeat.set(SIZE/8,SIZE/8));
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshStandardMaterial({map:fT[0],bumpMap:fT[1],bumpScale:2,roughnessMap:fT[1],roughness:.75,metalness:.35,emissiveMap:fT[2],emissive:0x27d9ff,emissiveIntensity:1.6,envMapIntensity:.8}));
+floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+// текстура металевих панелей
+const PS=256,pc=cv(PS),pbm=cv(PS);
+{const g=pc.getContext('2d'),b=pbm.getContext('2d');grunge(g,PS,200,50);grunge(b,PS,140,40);
+for(const x of[g,b]){x.strokeStyle=x===g?'#222':'#000';x.lineWidth=6;x.strokeRect(3,3,PS-6,PS-6);x.lineWidth=2;x.strokeRect(20,20,PS-40,PS-40);x.fillStyle=x===g?'#444':'#fff';for(const[a,c]of[[32,32],[224,32],[32,224],[224,224]]){x.beginPath();x.arc(a,c,5,0,7);x.fill()}}}
+const pT=tex(pc,SRGB),pB=tex(pbm);
 
 // перешкоди (однакові у всіх гравців — детермінована генерація)
 const boxes=[],worldMeshes=[floor];
-function addBox(x,y,z,w,h,d,col){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:col}));
-  m.position.set(x,y+h/2,z);scene.add(m);worldMeshes.push(m);
-  const e=new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.25}));m.add(e);
-  boxes.push({minx:x-w/2,maxx:x+w/2,miny:y,maxy:y+h,minz:z-d/2,maxz:z+d/2});
+function addBox(x,y,z,w,h,d,col,emi){
+  const g=new THREE.BoxGeometry(w,h,d),uv=g.attributes.uv,dm=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
+  for(let f=0;f<6;f++)for(let v=0;v<4;v++){const i=f*4+v;uv.setXY(i,uv.getX(i)*dm[f][0]/3,uv.getY(i)*dm[f][1]/3)}
+  const m=new THREE.Mesh(g,emi?new THREE.MeshStandardMaterial({color:0,emissive:col,emissiveIntensity:emi}):new THREE.MeshStandardMaterial({color:col,map:pT,bumpMap:pB,bumpScale:1.5,roughness:.42,metalness:.6,envMapIntensity:1}));
+  m.position.set(x,y+h/2,z);m.castShadow=m.receiveShadow=!emi;scene.add(m);worldMeshes.push(m);
+  if(!emi)boxes.push({minx:x-w/2,maxx:x+w/2,miny:y,maxy:y+h,minz:z-d/2,maxz:z+d/2});
 }
 // стіни арени
 const wc=0x1c1f40;
@@ -93,19 +125,25 @@ for(let i=0;i<26;i++){
 addBox(0,0,0,6,1,6,0xffffff);addBox(0,1,0,4,1,4,0xdddddd);addBox(0,2,0,2,1,2,0xbbbbbb);
 for(let i=0;i<5;i++)addBox(5+i*1.4,0,0,1.4,.5*(i+1),3,0x8ea0ff);
 
+// неонове освітлення арени
+const nc=[0x27d9ff,0xff3da8,0x7cff5a,0xffb627],strip=(x,y,z,w,h,d,c)=>addBox(x,y,z,w,h,d,c,4);
+strip(0,11.7,-H+.1,SIZE,.25,.2,nc[0]);strip(0,11.7,H-.1,SIZE,.25,.2,nc[1]);strip(-H+.1,11.7,0,.2,.25,SIZE,nc[2]);strip(H-.1,11.7,0,.2,.25,SIZE,nc[3]);
+[[-30,-30,0],[30,-30,1],[30,30,2],[-30,30,3]].forEach(([x,z,i])=>{addBox(x,0,z,1.4,8,1.4,0x1b1e3a);strip(x,8,z,1.8,.5,1.8,nc[i]);const l=new THREE.PointLight(nc[i],2.5,34,1.6);l.position.set(x,7,z);scene.add(l)});
+strip(0,3,0,2,.1,2,nc[0]);{const l=new THREE.PointLight(nc[0],2,30,1.6);l.position.set(0,2.6,2.2);scene.add(l)}
+
 // ---------- аватари ----------
 const remoteMeshes=[];
 function makeAvatar(id,name,hue){
   const g=new THREE.Group(),c=new THREE.Color().setHSL(hue,.7,.5);
-  const mat=new THREE.MeshLambertMaterial({color:c}),skin=new THREE.MeshLambertMaterial({color:0xffd9a0});
+  const mat=new THREE.MeshStandardMaterial({color:c,roughness:.5,metalness:.3}),skin=new THREE.MeshStandardMaterial({color:0xffd9a0,roughness:.7});
   const parts=[];
-  const add=(w,h,d,x,y,z,m)=>{const p=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);p.position.set(x,y,z);p.userData.pid=id;g.add(p);remoteMeshes.push(p);parts.push(p);return p};
-  const legL=add(.3,.6,.3,-.17,.3,0,new THREE.MeshLambertMaterial({color:0x2b3a67}));
+  const add=(w,h,d,x,y,z,m)=>{const p=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);p.position.set(x,y,z);p.userData.pid=id;p.castShadow=true;g.add(p);remoteMeshes.push(p);parts.push(p);return p};
+  const legL=add(.3,.6,.3,-.17,.3,0,new THREE.MeshStandardMaterial({color:0x2b3a67,roughness:.6}));
   const legR=add(.3,.6,.3,.17,.3,0,legL.material);
   add(.7,.7,.4,0,.95,0,mat);
   add(.4,.4,.4,0,1.5,0,skin);
   add(.2,.65,.2,-.45,.95,0,skin);
-  add(.2,.2,.7,.45,1.05,-.3,new THREE.MeshLambertMaterial({color:0x222222}));
+  add(.2,.2,.7,.45,1.05,-.3,new THREE.MeshStandardMaterial({color:0x222222,metalness:.9,roughness:.3}));
   const cv=document.createElement('canvas');cv.width=256;cv.height=64;
   const x=cv.getContext('2d');x.font='bold 34px system-ui';x.textAlign='center';x.lineWidth=6;x.strokeStyle='#000';x.strokeText(name,128,44);x.fillStyle='#fff';x.fillText(name,128,44);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false}));
@@ -141,7 +179,7 @@ function onData(c,d){
     if(!r){r=remotes[id]=makeAvatar(id,d.n,d.h);r.g.position.set(...d.p);feed(d.n+' приєднався');updInfo()}
     r.tp.set(...d.p);r.tyaw=d.y;r.last=performance.now();
   }else if(d.t==='l'){removePlayer(id)}
-  else if(d.t==='f'){tracer(new THREE.Vector3(...d.o),new THREE.Vector3(...d.e),0xffee88);beep(300,.05,.04)}
+  else if(d.t==='f'){tracer(new THREE.Vector3(...d.o),new THREE.Vector3(...d.e),0xffee88);beep(300,.05,.04);burst(new THREE.Vector3(...d.e))}
   else if(d.t==='h'&&d.to===myId){damage(d.dmg,d.n)}
   else if(d.t==='k'){feed(`${d.a} ✦ ${d.v}`)}
 }
@@ -197,16 +235,23 @@ addEventListener('mousemove',e=>{
 const ray=new THREE.Raycaster();ray.far=200;let cool=0;const tracers=[];
 let actx;function beep(f,d,v){try{actx=actx||new AudioContext();const o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.setValueAtTime(f,actx.currentTime);o.frequency.exponentialRampToValueAtTime(f/3,actx.currentTime+d);g.gain.setValueAtTime(v,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+d);o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+d)}catch(e){}}
 function tracer(a,b,col){
-  const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color:col,transparent:true}));
+  const l=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,a.distanceTo(b),5),new THREE.MeshBasicMaterial({color:new THREE.Color(col).multiplyScalar(5),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+  l.position.copy(a).add(b).multiplyScalar(.5);
+  l.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),b.clone().sub(a).normalize());
   scene.add(l);tracers.push({l,t:.12});
 }
+const SN=300,spP=new Float32Array(SN*3).fill(-999),spV=new Float32Array(SN*3),spL=new Float32Array(SN);let si=0;
+const spG=new THREE.BufferGeometry();spG.setAttribute('position',new THREE.BufferAttribute(spP,3));
+const sparks=new THREE.Points(spG,new THREE.PointsMaterial({color:new THREE.Color(0xffa040).multiplyScalar(4),size:.09,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+sparks.frustumCulled=false;scene.add(sparks);
+function burst(p){for(let k=0;k<14;k++){const i=si++%SN;spP.set([p.x,p.y,p.z],i*3);spV.set([(Math.random()-.5)*6,Math.random()*5,(Math.random()-.5)*6],i*3);spL[i]=.3+Math.random()*.4}}
 function shoot(){
   const o=camera.position.clone(),d=new THREE.Vector3();camera.getWorldDirection(d);
   ray.set(o,d);
   const h=ray.intersectObjects([...worldMeshes,...remoteMeshes],false)[0];
   const end=h?h.point:o.clone().addScaledVector(d,100);
-  const muzzle=o.clone().addScaledVector(d,.6).add(new THREE.Vector3(Math.cos(me.yaw),-.25,-Math.sin(me.yaw)).multiplyScalar(.0)).add(new THREE.Vector3(0,-.15,0));
-  tracer(muzzle,end,0xffee88);beep(500,.07,.05);
+  const muzzle=new THREE.Vector3();gunTip.getWorldPosition(muzzle);
+  tracer(muzzle,end,0xffee88);beep(500,.07,.05);flashLight.intensity=9;recoil=1;burst(end);
   send({t:'f',o:muzzle.toArray(),e:end.toArray()});
   if(h&&h.object.userData.pid){
     const pid=h.object.userData.pid;
@@ -229,6 +274,55 @@ function feed(t){
 function updInfo(){
   $('info').innerHTML=(roomCode?'Кімната: <b>'+roomCode+'</b><br>':'')+'Гравців: '+(Object.keys(remotes).length+1);
 }
+
+// ---------- зброя від 1-ї особи, світло пострілу ----------
+const flashLight=new THREE.PointLight(0xffaa55,0,14,2);flashLight.position.set(.3,-.1,-1.2);camera.add(flashLight);
+const gun=new THREE.Group(),gm=new THREE.MeshStandardMaterial({color:0x2a2e3a,metalness:.9,roughness:.3,envMapIntensity:1.2});
+const gpart=(w,h,d,x,y,z,m)=>{const p=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m||gm);p.position.set(x,y,z);gun.add(p)};
+gpart(.07,.1,.45,0,0,0);gpart(.045,.045,.35,0,.02,-.38);gpart(.06,.14,.08,0,-.1,.1);gpart(.015,.03,.02,0,.07,-.15);
+gpart(.072,.012,.3,0,.056,-.02,new THREE.MeshStandardMaterial({color:0,emissive:0x27d9ff,emissiveIntensity:3}));
+const gunTip=new THREE.Object3D();gunTip.position.set(0,.02,-.6);gun.add(gunTip);
+gun.position.set(.26,-.24,-.5);camera.add(gun);let recoil=0;
+// космічний пил
+const DN=500,dP=new Float32Array(DN*3);for(let i=0;i<DN;i++){dP[i*3]=(Math.random()-.5)*80;dP[i*3+1]=Math.random()*12;dP[i*3+2]=(Math.random()-.5)*80}
+const dG=new THREE.BufferGeometry();dG.setAttribute('position',new THREE.BufferAttribute(dP,3));
+const dust=new THREE.Points(dG,new THREE.PointsMaterial({color:0x9fb4ff,size:.06,transparent:true,opacity:.5,blending:THREE.AdditiveBlending,depthWrite:false}));dust.frustumCulled=false;scene.add(dust);
+// постобробка: HDR + bloom + кінематографічний грейд + FXAA
+const GradeShader={uniforms:{tDiffuse:{value:null},time:{value:0}},
+vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+fragmentShader:`uniform sampler2D tDiffuse;uniform float time;varying vec2 vUv;
+vec3 aces(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}
+void main(){
+ vec2 d=vUv-.5;float r=dot(d,d);vec3 c;
+ c.r=texture2D(tDiffuse,vUv+d*r*.012).r;c.g=texture2D(tDiffuse,vUv).g;c.b=texture2D(tDiffuse,vUv-d*r*.012).b;
+ c=aces(c*1.1);float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,1.15);
+ c=mix(c,c*vec3(.95,1.,1.08),.5);c=pow(c,vec3(1./2.2));
+ c*=1.-r*1.1;
+ float n=fract(sin(dot(vUv*vec2(1731.,977.)+time,vec2(12.9898,78.233)))*43758.5453);c+=(n-.5)*.03;
+ gl_FragColor=vec4(c,1.);}`};
+const rtg=new THREE.WebGLRenderTarget(innerWidth*PR,innerHeight*PR,{type:THREE.HalfFloatType,format:THREE.RGBAFormat,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+const composer=new THREE.EffectComposer(renderer,rtg);composer.setPixelRatio(PR);
+composer.addPass(new THREE.RenderPass(scene,camera));
+const bloom=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.75,.65,.88);composer.addPass(bloom);
+const grade=new THREE.ShaderPass(GradeShader);composer.addPass(grade);
+const fxaa=new THREE.ShaderPass(THREE.FXAAShader);composer.addPass(fxaa);
+window.composer=composer;
+function resizeFX(){composer.setSize(innerWidth,innerHeight);fxaa.material.uniforms.resolution.value.set(1/(innerWidth*PR),1/(innerHeight*PR))}resizeFX();
+let hq=true;
+addEventListener('keydown',e=>{if(e.code==='KeyG'){hq=!hq;renderer.shadowMap.enabled=hq;bloom.enabled=hq;scene.traverse(o=>{if(o.material)o.material.needsUpdate=true});feed('Графіка: '+(hq?'ультра':'економ'))}});
+
+// ---------- статуя skin.glb у центрі карти ----------
+let statueMixer=null;
+{const sl=new THREE.SpotLight(0xffffff,3.5,45,.55,.6,1);sl.position.set(7,13,7);sl.target.position.set(0,4.5,0);scene.add(sl,sl.target)}
+new THREE.GLTFLoader().load('skin.glb',gltf=>{
+  const m=gltf.scene,box=new THREE.Box3().setFromObject(m),sz=box.getSize(new THREE.Vector3());
+  m.scale.setScalar(3/(sz.y||1));
+  box.setFromObject(m);const c=box.getCenter(new THREE.Vector3());
+  m.position.set(-c.x,3.1-box.min.y,-c.z);
+  m.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;o.frustumCulled=false;worldMeshes.push(o);if(o.material)o.material.envMapIntensity=1}});
+  scene.add(m);
+  if(gltf.animations.length){statueMixer=new THREE.AnimationMixer(m);statueMixer.clipAction(gltf.animations[0]).play()}
+},undefined,()=>console.warn('skin.glb не знайдено'));
 
 // ---------- головний цикл ----------
 let prev=performance.now(),sendT=0,bob=0;
@@ -283,7 +377,14 @@ function loop(now){
     const k=tracers[i];k.t-=dt;k.l.material.opacity=Math.max(0,k.t/.12);
     if(k.t<=0){scene.remove(k.l);k.l.geometry.dispose();tracers.splice(i,1)}
   }
-  renderer.render(scene,camera);
+  flashLight.intensity*=Math.exp(-35*dt);recoil*=Math.exp(-14*dt);
+  gun.position.z=-.5+recoil*.07;gun.rotation.x=recoil*.1;gun.position.y=-.24+Math.sin(bob)*.006;
+  for(let i=0;i<SN;i++)if(spL[i]>0){spL[i]-=dt;spV[i*3+1]-=14*dt;for(let a=0;a<3;a++)spP[i*3+a]+=spV[i*3+a]*dt;if(spL[i]<=0)spP[i*3+1]=-999}
+  spG.attributes.position.needsUpdate=true;
+  dust.rotation.y+=dt*.01;dust.position.y=Math.sin(now*.0004)*.6;
+  if(statueMixer)statueMixer.update(dt);
+  grade.uniforms.time.value=(now%1000)/1000;
+  composer.render();
 }
 requestAnimationFrame(loop);
 </script>
