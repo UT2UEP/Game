@@ -1,381 +1,290 @@
 <!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <title>Baseplate Statue Edition</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
-        #menu {
-            position: absolute; top: 10px; left: 10px;
-            background: rgba(255, 255, 255, 0.85); color: #222;
-            padding: 10px 14px; border-radius: 6px; font-size: 13px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: opacity 0.3s;
-        }
-        input { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; width: 130px; }
-        button { padding: 4px 10px; background: #2b2b2b; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #444; }
-        
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 12px; height: 12px;
-            transform: translate(-50%, -50%); pointer-events: none; display: none;
-        }
-        #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: rgba(255, 255, 255, 0.85);
-            box-shadow: 0 0 2px #000;
-        }
-        #crosshair::before { top: 5px; left: 0; width: 12px; height: 2px; }
-        #crosshair::after { top: 0; left: 5px; width: 2px; height: 12px; }
+<html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Space Arena</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,Arial,sans-serif;color:#fff;user-select:none}
+canvas{display:block}
+.ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,5,20,.75);z-index:10}
+.box{background:#12142a;border:1px solid #3b3f7a;border-radius:14px;padding:26px 30px;width:340px;text-align:center}
+h1{margin:0 0 4px;font-size:28px;letter-spacing:2px}.sub{opacity:.6;font-size:13px;margin-bottom:16px}
+input{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:1px solid #444a99;background:#0a0c1e;color:#fff;font-size:15px;text-align:center}
+button{width:100%;padding:11px;margin:5px 0;border:0;border-radius:8px;background:#5b6cff;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+button:hover{background:#7483ff}button.alt{background:#2a2e66}
+#st{min-height:18px;font-size:13px;color:#ffd166;margin-top:8px}
+.help{font-size:12px;opacity:.65;margin-top:12px;line-height:1.5}
+#hud{position:fixed;inset:0;pointer-events:none;display:none;z-index:5}
+#cross{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 3px #000}
+#cross:before{left:9px;top:0;width:2px;height:20px;-webkit-mask:linear-gradient(#000 35%,transparent 35%,transparent 65%,#000 65%);mask:linear-gradient(#000 35%,transparent 35%,transparent 65%,#000 65%)}
+#cross:after{top:9px;left:0;height:2px;width:20px;-webkit-mask:linear-gradient(90deg,#000 35%,transparent 35%,transparent 65%,#000 65%);mask:linear-gradient(90deg,#000 35%,transparent 35%,transparent 65%,#000 65%)}
+#cross.hit:before,#cross.hit:after{background:#f44}
+#hp{position:absolute;left:20px;bottom:20px;width:220px;height:20px;background:#0008;border:2px solid #fff6;border-radius:6px;overflow:hidden}
+#hpb{height:100%;width:100%;background:linear-gradient(90deg,#e33,#4d4);transition:width .15s}
+#info{position:absolute;right:16px;top:12px;text-align:right;font-size:13px;text-shadow:0 0 4px #000;line-height:1.6}
+#feed{position:absolute;left:16px;top:12px;font-size:13px;text-shadow:0 0 4px #000;line-height:1.5}
+#hurt{position:absolute;inset:0;box-shadow:inset 0 0 120px 30px #f00;opacity:0;transition:opacity .35s}
+</style></head><body>
 
-        #hp-container {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 220px; height: 18px; background: rgba(0, 0, 0, 0.6);
-            border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.3);
-        }
-        #hp-bar { width: 100%; height: 100%; background: #2ecc71; transition: width 0.15s, background 0.2s; }
-        #hp-text {
-            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
-            color: #fff; font-size: 12px; line-height: 18px; font-weight: bold; text-shadow: 1px 1px 2px #000;
-        }
-        #damage-flash {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 0, 0, 0.35); pointer-events: none; opacity: 0; transition: opacity 0.2s;
-        }
-    </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-</head>
-<body>
+<div id="menu" class="ov"><div class="box">
+<h1>SPACE ARENA</h1><div class="sub">P2P шутер від 1-ї особи</div>
+<input id="nick" maxlength="12" placeholder="Твій нікнейм">
+<button id="bHost">Створити кімнату</button>
+<input id="code" maxlength="5" placeholder="Код кімнати від друга">
+<button id="bJoin" class="alt">Приєднатися</button>
+<button id="bSolo" class="alt">Грати наодинці</button>
+<div id="st"></div>
+<div class="help">WASD — рух · Shift — біг · Пробіл — стрибок<br>Миша — огляд · ЛКМ — стрільба · Esc — пауза</div>
+</div></div>
 
-<div id="damage-flash"></div>
+<div id="pause" class="ov" style="display:none;cursor:pointer"><div class="box"><h1>ПАУЗА</h1><div class="sub">Клікни, щоб повернутись у гру</div><div id="codeShow" style="font-size:22px;letter-spacing:4px;color:#ffd166"></div></div></div>
 
-<div id="menu">
-    <div>Твій ID: <b id="my-id">...</b></div>
-    <div style="margin-top: 6px;">
-        <input type="text" id="friend-id" placeholder="ID хоста">
-        <button id="connect-btn">Підключитись</button>
-    </div>
-    <div id="status" style="margin-top: 6px; color: #d35400; font-weight: bold; font-size: 11px;">Очікування підключення...</div>
-    <div style="margin-top: 4px; color: #555; font-size: 10px;">WASD — рух | ЛКМ — стрільба</div>
-</div>
+<div id="hud"><div id="hurt"></div><div id="cross"></div><div id="hp"><div id="hpb"></div></div><div id="feed"></div><div id="info"></div></div>
 
-<div id="crosshair"></div>
-
-<div id="hp-container">
-    <div id="hp-bar"></div>
-    <div id="hp-text">100 HP</div>
-</div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
-    // Посилання на твою модель-статую у центрі карти (через CDN jsDelivr для гарантованого завантаження)
-    const STATUE_URL = 'https://cdn.jsdelivr.net/gh/UT2UEP/Game@main/skin.glb';
-    const STATUE_SCALE = 1.5; // Можеш змінити розмір статуї тут
+const $=id=>document.getElementById(id);
+// ---------- сцена ----------
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x060818);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,600);camera.rotation.order='YXZ';
+scene.add(camera);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
 
-    // 1. СЦЕНА ТА ОСВІТЛЕННЯ
-    const scene = new THREE.Scene();
-    const loader = new THREE.TextureLoader();
-    const texture = loader.load('space.jpg');
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.background = texture;
+scene.add(new THREE.HemisphereLight(0xbfd0ff,0x303050,.9));
+const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(30,60,20);scene.add(sun);
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    document.body.appendChild(renderer.domElement);
+// небо з space.jpg (сфера, що рухається разом з камерою)
+const sky=new THREE.Mesh(new THREE.SphereGeometry(400,48,32),new THREE.MeshBasicMaterial({color:0x888888,side:THREE.BackSide,depthWrite:false,fog:false}));
+scene.add(sky);
+new THREE.TextureLoader().load('space.jpg',t=>{if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;sky.material.map=t;sky.material.color.set(0xffffff);sky.material.needsUpdate=true},undefined,()=>console.warn('space.jpg не знайдено'));
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(10, 30, 15);
-    scene.add(dirLight);
+// підлога
+const SIZE=80,H=SIZE/2;
+const fc=document.createElement('canvas');fc.width=fc.height=128;
+{const g=fc.getContext('2d');g.fillStyle='#2b2f55';g.fillRect(0,0,128,128);g.fillStyle='#343968';g.fillRect(0,0,64,64);g.fillRect(64,64,64,64);g.strokeStyle='#6f7bff';g.lineWidth=2;g.strokeRect(0,0,128,128)}
+const ft=new THREE.CanvasTexture(fc);ft.wrapS=ft.wrapT=THREE.RepeatWrapping;ft.repeat.set(SIZE/4,SIZE/4);ft.anisotropy=8;
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshLambertMaterial({map:ft}));
+floor.rotation.x=-Math.PI/2;scene.add(floor);
 
-    // 2. ПЛАТФОРМА ТА УКРИТТЯ
-    const floorSize = 100;
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(floorSize, floorSize),
-        new THREE.MeshLambertMaterial({ color: 0x888888 })
-    );
-    floor.rotation.x = -Math.PI / 2;
-    scene.add(floor);
+// перешкоди (однакові у всіх гравців — детермінована генерація)
+const boxes=[],worldMeshes=[floor];
+function addBox(x,y,z,w,h,d,col){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:col}));
+  m.position.set(x,y+h/2,z);scene.add(m);worldMeshes.push(m);
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.25}));m.add(e);
+  boxes.push({minx:x-w/2,maxx:x+w/2,miny:y,maxy:y+h,minz:z-d/2,maxz:z+d/2});
+}
+// стіни арени
+const wc=0x1c1f40;
+addBox(0,0,-H-1,SIZE+4,12,2,wc);addBox(0,0,H+1,SIZE+4,12,2,wc);addBox(-H-1,0,0,2,12,SIZE,wc);addBox(H+1,0,0,2,12,SIZE,wc);
+let seed=12345;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const cols=[0xff5964,0xffb627,0x38b000,0x38a3ff,0xa05cff,0xff7bd0,0x00d4c0];
+for(let i=0;i<26;i++){
+  const w=2+rnd()*5,d=2+rnd()*5,h=1+rnd()*4;
+  const x=(rnd()-.5)*(SIZE-14),z=(rnd()-.5)*(SIZE-14);
+  if(Math.hypot(x,z)<6)continue;
+  addBox(x,0,z,w,h,d,cols[i%cols.length]);
+}
+// центральна башта зі сходами
+addBox(0,0,0,6,1,6,0xffffff);addBox(0,1,0,4,1,4,0xdddddd);addBox(0,2,0,2,1,2,0xbbbbbb);
+for(let i=0;i<5;i++)addBox(5+i*1.4,0,0,1.4,.5*(i+1),3,0x8ea0ff);
 
-    const boxMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
-    const coverPositions = [
-        [8, 1.2, 0], [-8, 1.2, 0], [0, 1.2, -10], [0, 1.2, 10], [12, 1.2, -12], [-12, 1.2, 12]
-    ];
-    coverPositions.forEach(pos => {
-        const box = new THREE.Mesh(new THREE.BoxGeometry(3, 2.4, 3), boxMat);
-        box.position.set(pos[0], pos[1], pos[2]);
-        scene.add(box);
-    });
+// ---------- аватари ----------
+const remoteMeshes=[];
+function makeAvatar(id,name,hue){
+  const g=new THREE.Group(),c=new THREE.Color().setHSL(hue,.7,.5);
+  const mat=new THREE.MeshLambertMaterial({color:c}),skin=new THREE.MeshLambertMaterial({color:0xffd9a0});
+  const parts=[];
+  const add=(w,h,d,x,y,z,m)=>{const p=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);p.position.set(x,y,z);p.userData.pid=id;g.add(p);remoteMeshes.push(p);parts.push(p);return p};
+  const legL=add(.3,.6,.3,-.17,.3,0,new THREE.MeshLambertMaterial({color:0x2b3a67}));
+  const legR=add(.3,.6,.3,.17,.3,0,legL.material);
+  add(.7,.7,.4,0,.95,0,mat);
+  add(.4,.4,.4,0,1.5,0,skin);
+  add(.2,.65,.2,-.45,.95,0,skin);
+  add(.2,.2,.7,.45,1.05,-.3,new THREE.MeshLambertMaterial({color:0x222222}));
+  const cv=document.createElement('canvas');cv.width=256;cv.height=64;
+  const x=cv.getContext('2d');x.font='bold 34px system-ui';x.textAlign='center';x.lineWidth=6;x.strokeStyle='#000';x.strokeText(name,128,44);x.fillStyle='#fff';x.fillText(name,128,44);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false}));
+  sp.scale.set(2,.5,1);sp.position.y=2.1;sp.renderOrder=9;g.add(sp);
+  scene.add(g);
+  return{g,parts,legL,legR,tp:new THREE.Vector3(),tyaw:0,last:performance.now(),name,phase:0};
+}
+function removePlayer(id){
+  const r=remotes[id];if(!r)return;
+  scene.remove(r.g);for(let i=remoteMeshes.length-1;i>=0;i--)if(remoteMeshes[i].userData.pid===id)remoteMeshes.splice(i,1);
+  delete remotes[id];feed(r.name+' вийшов');updInfo();
+}
 
-    // 3. СТАТУЯ ПОСЕРЕДИНИ КАРТИ (Твій skin.glb)
-    const statueGroup = new THREE.Group();
-    statueGroup.position.set(0, 0, 0); // Центр карти (0, 0, 0)
-    scene.add(statueGroup);
+// ---------- мережа (PeerJS, WebRTC P2P) ----------
+const remotes={},conns={};let peer=null,isHost=false,myId='solo',roomCode='',inGame=false;
+const myHue=Math.random(),PFX='spacearena-';
+function setup(c){
+  c.on('open',()=>{conns[c.peer]=c;$('st').textContent='';});
+  c.on('data',d=>onData(c,d));
+  c.on('close',()=>{
+    delete conns[c.peer];
+    if(isHost){removePlayer(c.peer);relay(null,{t:'l',id:c.peer})}
+    else{feed('Зʼєднання з хостом втрачено');Object.keys(remotes).forEach(removePlayer)}
+  });
+}
+function relay(from,d){for(const k in conns)if(conns[k]!==from&&conns[k].open)conns[k].send(d)}
+function send(d){for(const k in conns)if(conns[k].open)conns[k].send(d)}
+function onData(c,d){
+  const id=d.id||c.peer;
+  if(isHost&&d.t!=='l')relay(c,{...d,id});
+  if(d.t==='s'){
+    let r=remotes[id];
+    if(!r){r=remotes[id]=makeAvatar(id,d.n,d.h);r.g.position.set(...d.p);feed(d.n+' приєднався');updInfo()}
+    r.tp.set(...d.p);r.tyaw=d.y;r.last=performance.now();
+  }else if(d.t==='l'){removePlayer(id)}
+  else if(d.t==='f'){tracer(new THREE.Vector3(...d.o),new THREE.Vector3(...d.e),0xffee88);beep(300,.05,.04)}
+  else if(d.t==='h'&&d.to===myId){damage(d.dmg,d.n)}
+  else if(d.t==='k'){feed(`${d.a} ✦ ${d.v}`)}
+}
+function err(e){$('st').textContent=e.type==='peer-unavailable'?'Кімнату не знайдено. Перевір код.':'Помилка мережі: '+(e.type||e.message)}
+$('bHost').onclick=()=>{
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';roomCode='';for(let i=0;i<5;i++)roomCode+=A[Math.random()*A.length|0];
+  $('st').textContent='Створюю кімнату…';
+  peer=new Peer(PFX+roomCode);peer.on('error',err);
+  peer.on('open',id=>{myId=id;isHost=true;peer.on('connection',setup);start()});
+};
+$('bJoin').onclick=()=>{
+  const code=$('code').value.trim().toUpperCase();if(!code){$('st').textContent='Введи код кімнати';return}
+  $('st').textContent='Зʼєднання…';roomCode=code;
+  peer=new Peer();peer.on('error',err);
+  peer.on('open',id=>{myId=id;const c=peer.connect(PFX+code,{reliable:false});setup(c);c.on('open',start)});
+};
+$('bSolo').onclick=()=>{roomCode='';start()};
 
-    const gltfLoader = new THREE.GLTFLoader();
-    gltfLoader.load(STATUE_URL, function (gltf) {
-        const model = gltf.scene;
-        model.scale.set(STATUE_SCALE, STATUE_SCALE, STATUE_SCALE);
-        statueGroup.add(model);
-        console.log("Статую успішно встановлено в центрі карти!");
-    }, undefined, function (error) {
-        console.error("Помилка завантаження статуї:", error);
-    });
+// ---------- гравець ----------
+const me={p:new THREE.Vector3(0,0,20),vy:0,yaw:0,pitch:0,hp:100,ground:false,name:'Гравець'};
+const R=.4,HT=1.75,EYE=1.6;
+function spawn(){
+  const a=Math.random()*Math.PI*2,d=25+Math.random()*10;
+  me.p.set(Math.cos(a)*d,0,Math.sin(a)*d);me.vy=0;me.yaw=Math.atan2(me.p.x,me.p.z);me.pitch=0;me.hp=100;$('hpb').style.width='100%';
+}
+function hits(p){
+  for(const b of boxes)if(p.x+R>b.minx&&p.x-R<b.maxx&&p.z+R>b.minz&&p.z-R<b.maxz&&p.y<b.maxy-.05&&p.y+HT>b.miny)return true;
+  return false;
+}
+function start(){
+  me.name=($('nick').value.trim()||'Гравець'+(Math.random()*90+10|0)).slice(0,12);
+  spawn();inGame=true;$('menu').style.display='none';$('hud').style.display='block';
+  $('codeShow').textContent=roomCode?'КОД: '+roomCode:'';
+  updInfo();lockPointer();
+}
+function lockPointer(){renderer.domElement.requestPointerLock()}
+document.addEventListener('pointerlockchange',()=>{
+  const l=document.pointerLockElement===renderer.domElement;
+  $('pause').style.display=(!l&&inGame)?'flex':'none';
+});
+$('pause').onclick=lockPointer;
+const keys={};let mouseDown=false;
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space')e.preventDefault()});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement)mouseDown=true});
+addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false});
+addEventListener('mousemove',e=>{
+  if(document.pointerLockElement!==renderer.domElement)return;
+  me.yaw-=e.movementX*.0022;me.pitch=Math.max(-1.55,Math.min(1.55,me.pitch-e.movementY*.0022));
+});
 
-    // 4. ГРАВЕЦЬ (КУБИК) ТА ЗДОРОВ'Я
-    const player = {
-        x: 0, y: 0, z: 15,
-        vx: 0, vy: 0, vz: 0,
-        walkSpeed: 0.15,
-        runSpeed: 0.28,
-        jumpForce: 0.28,
-        gravity: 0.014,
-        onGround: false,
-        hp: 100
-    };
+// ---------- стрільба ----------
+const ray=new THREE.Raycaster();ray.far=200;let cool=0;const tracers=[];
+let actx;function beep(f,d,v){try{actx=actx||new AudioContext();const o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.setValueAtTime(f,actx.currentTime);o.frequency.exponentialRampToValueAtTime(f/3,actx.currentTime+d);g.gain.setValueAtTime(v,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+d);o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+d)}catch(e){}}
+function tracer(a,b,col){
+  const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color:col,transparent:true}));
+  scene.add(l);tracers.push({l,t:.12});
+}
+function shoot(){
+  const o=camera.position.clone(),d=new THREE.Vector3();camera.getWorldDirection(d);
+  ray.set(o,d);
+  const h=ray.intersectObjects([...worldMeshes,...remoteMeshes],false)[0];
+  const end=h?h.point:o.clone().addScaledVector(d,100);
+  const muzzle=o.clone().addScaledVector(d,.6).add(new THREE.Vector3(Math.cos(me.yaw),-.25,-Math.sin(me.yaw)).multiplyScalar(.0)).add(new THREE.Vector3(0,-.15,0));
+  tracer(muzzle,end,0xffee88);beep(500,.07,.05);
+  send({t:'f',o:muzzle.toArray(),e:end.toArray()});
+  if(h&&h.object.userData.pid){
+    const pid=h.object.userData.pid;
+    const c=$('cross');c.classList.add('hit');setTimeout(()=>c.classList.remove('hit'),100);
+    if(pid in conns)conns[pid].send({t:'h',to:pid,dmg:25,n:me.name});
+    else if(!isHost&&conns[Object.keys(conns)[0]])conns[Object.keys(conns)[0]].send({t:'h',to:pid,dmg:25,n:me.name,id:myId});
+  }
+}
+function damage(dmg,by){
+  me.hp-=dmg;$('hpb').style.width=Math.max(0,me.hp)+'%';
+  $('hurt').style.opacity=1;setTimeout(()=>$('hurt').style.opacity=0,120);beep(120,.15,.08);
+  if(me.hp<=0){send({t:'k',a:by,v:me.name});feed(`${by} ✦ ${me.name}`);spawn()}
+}
 
-    // Створюємо візуальний кубик для себе (видно з 3-ї особи)
-    const myCube = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1.8, 1),
-        new THREE.MeshLambertMaterial({ color: 0x3498db }) // Синенький кубик для тебе
-    );
-    scene.add(myCube);
+// ---------- UI ----------
+function feed(t){
+  const d=document.createElement('div');d.textContent=t;$('feed').appendChild(d);
+  setTimeout(()=>d.remove(),5000);while($('feed').children.length>6)$('feed').firstChild.remove();
+}
+function updInfo(){
+  $('info').innerHTML=(roomCode?'Кімната: <b>'+roomCode+'</b><br>':'')+'Гравців: '+(Object.keys(remotes).length+1);
+}
 
-    function updateHPUI() {
-        const bar = document.getElementById('hp-bar');
-        const text = document.getElementById('hp-text');
-        bar.style.width = Math.max(0, player.hp) + '%';
-        text.innerText = Math.max(0, player.hp) + ' HP';
-        bar.style.background = player.hp > 50 ? '#2ecc71' : (player.hp > 25 ? '#f1c40f' : '#e74c3c');
+// ---------- головний цикл ----------
+let prev=performance.now(),sendT=0,bob=0;
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-prev)/1000,.05);prev=now;
+  const locked=document.pointerLockElement===renderer.domElement;
+  if(inGame&&locked){
+    const f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+    const r=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+    const sp=(keys.ShiftLeft||keys.ShiftRight)?9:5.5;
+    let vx=0,vz=0;
+    if(f||r){
+      const l=Math.hypot(f,r),s=Math.sin(me.yaw),c=Math.cos(me.yaw);
+      vx=(-s*f+c*r)/l*sp;vz=(-c*f-s*r)/l*sp;
     }
-
-    function takeDamage(amount) {
-        player.hp -= amount;
-        updateHPUI();
-        const flash = document.getElementById('damage-flash');
-        flash.style.opacity = '1';
-        setTimeout(() => flash.style.opacity = '0', 150);
-
-        if (player.hp <= 0) {
-            player.hp = 100;
-            updateHPUI();
-            player.x = (Math.random() - 0.5) * 40;
-            player.z = (Math.random() - 0.5) * 40;
-            player.y = 5;
-        }
+    me.p.x+=vx*dt;if(hits(me.p))me.p.x-=vx*dt;
+    me.p.z+=vz*dt;if(hits(me.p))me.p.z-=vz*dt;
+    if(keys.Space&&me.ground){me.vy=8;me.ground=false}
+    me.vy-=24*dt;me.p.y+=me.vy*dt;me.ground=false;
+    if(me.p.y<=0){me.p.y=0;me.vy=0;me.ground=true}
+    for(const b of boxes){
+      if(me.p.x+R>b.minx&&me.p.x-R<b.maxx&&me.p.z+R>b.minz&&me.p.z-R<b.maxz&&me.p.y<b.maxy&&me.p.y+HT>b.miny){
+        if(me.vy<=0&&me.p.y>b.maxy-.6){me.p.y=b.maxy;me.vy=0;me.ground=true}
+        else if(me.vy>0){me.p.y=b.miny-HT;me.vy=0}
+      }
     }
+    me.p.x=Math.max(-H+R,Math.min(H-R,me.p.x));me.p.z=Math.max(-H+R,Math.min(H-R,me.p.z));
+    if(me.p.y<-30)spawn();
+    bob+=(f||r)&&me.ground?dt*(sp>6?14:10):0;
+    cool-=dt;if(mouseDown&&cool<=0){shoot();cool=.15}
+  }
+  camera.position.set(me.p.x,me.p.y+EYE+Math.sin(bob)*.04,me.p.z);
+  camera.rotation.set(me.pitch,me.yaw,0);
+  sky.position.copy(camera.position);
 
-    // Кубик для друга
-    const friendCube = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1.8, 1),
-        new THREE.MeshLambertMaterial({ color: 0xe74c3c }) // Червоненький кубик для друга
-    );
-    friendCube.visible = false;
-    scene.add(friendCube);
+  sendT+=dt;
+  if(sendT>.05&&inGame){sendT=0;if(Object.keys(conns).length)send({t:'s',p:[me.p.x,me.p.y,me.p.z],y:me.yaw,n:me.name,h:myHue})}
 
-    // 5. КЕРУВАННЯ ТА СТРІЛЬБА
-    let yaw = 0, pitch = 0;
-    const keys = {};
-    const raycaster = new THREE.Raycaster();
-
-    renderer.domElement.addEventListener('click', () => {
-        if (document.pointerLockElement !== renderer.domElement) {
-            renderer.domElement.requestPointerLock();
-        }
-    });
-
-    document.addEventListener('pointerlockchange', () => {
-        const locked = document.pointerLockElement === renderer.domElement;
-        document.getElementById('menu').style.opacity = locked ? '0' : '1';
-        document.getElementById('crosshair').style.display = locked ? 'block' : 'none';
-    });
-
-    window.addEventListener('mousedown', (e) => {
-        if (e.button === 0 && document.pointerLockElement === renderer.domElement) shoot();
-    });
-
-    function createTracer(startPos, endPos, color = 0xffff00) {
-        const geo = new THREE.BufferGeometry().setFromPoints([startPos, endPos]);
-        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color }));
-        scene.add(line);
-        setTimeout(() => scene.remove(line), 80);
-    }
-
-    function shoot() {
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-        const startPos = camera.position.clone();
-
-        let hitFriend = false;
-        let hitPoint = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 60);
-
-        if (friendCube.visible) {
-            const intersects = raycaster.intersectObject(friendCube, true);
-            if (intersects.length > 0) {
-                hitFriend = true;
-                hitPoint = intersects[0].point;
-            }
-        }
-
-        createTracer(startPos, hitPoint, hitFriend ? 0xff0000 : 0xffee55);
-
-        if (conn && conn.open) {
-            conn.send({
-                type: 'shoot',
-                start: startPos,
-                end: hitPoint,
-                hit: hitFriend,
-                damage: 25
-            });
-        }
-    }
-
-    document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === renderer.domElement) {
-            yaw -= e.movementX * 0.0022;
-            pitch -= e.movementY * 0.0022;
-            pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
-        }
-    });
-
-    document.addEventListener('keydown', (e) => {
-        keys[e.code] = true;
-        if (e.code === 'Space' && player.onGround) {
-            player.vy = player.jumpForce;
-            player.onGround = false;
-        }
-    });
-    document.addEventListener('keyup', (e) => keys[e.code] = false);
-
-    // 6. МУЛЬТИПЛЕЄР
-    const HOST_ID = 'ut2uep-baseplate-host';
-    let peer = new Peer(HOST_ID);
-    let conn = null;
-
-    peer.on('open', (id) => {
-        document.getElementById('my-id').innerText = id;
-    });
-
-    peer.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-            peer = new Peer();
-            peer.on('open', (id) => {
-                document.getElementById('my-id').innerText = id;
-                document.getElementById('friend-id').value = HOST_ID;
-            });
-        }
-    });
-
-    peer.on('connection', (c) => {
-        conn = c;
-        setupConn();
-    });
-
-    document.getElementById('connect-btn').addEventListener('click', () => {
-        const fid = document.getElementById('friend-id').value.trim();
-        if (fid) {
-            conn = peer.connect(fid);
-            setupConn();
-        }
-    });
-
-    function setupConn() {
-        if (!conn) return;
-
-        conn.on('open', () => {
-            document.getElementById('status').innerText = "Гравець підключений!";
-            document.getElementById('status').style.color = "#2ecc71";
-            friendCube.visible = true;
-        });
-
-        if (conn.open) {
-            document.getElementById('status').innerText = "Гравець підключений!";
-            document.getElementById('status').style.color = "#2ecc71";
-            friendCube.visible = true;
-        }
-
-        conn.on('data', (data) => {
-            if (data.type === 'move') {
-                friendCube.position.set(data.x, data.y + 0.9, data.z);
-                friendCube.rotation.y = data.ry;
-                friendCube.visible = true;
-            } else if (data.type === 'shoot') {
-                const start = new THREE.Vector3(data.start.x, data.start.y, data.start.z);
-                const end = new THREE.Vector3(data.end.x, data.end.y, data.end.z);
-                createTracer(start, end, 0xff5500);
-                if (data.hit) takeDamage(data.damage);
-            }
-        });
-
-        conn.on('close', () => {
-            friendCube.visible = false;
-            document.getElementById('status').innerText = "З'єднання втрачено";
-            document.getElementById('status').style.color = "#e74c3c";
-        });
-    }
-
-    // 7. ГОЛОВНИЙ ЦИКЛ
-    function animate() {
-        requestAnimationFrame(animate);
-
-        const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? player.runSpeed : player.walkSpeed;
-        const input = new THREE.Vector3();
-        if (keys['KeyW']) input.z -= 1;
-        if (keys['KeyS']) input.z += 1;
-        if (keys['KeyA']) input.x -= 1;
-        if (keys['KeyD']) input.x += 1;
-
-        if (input.length() > 0) {
-            input.normalize();
-            input.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-            player.vx = input.x * speed;
-            player.vz = input.z * speed;
-        } else {
-            player.vx *= 0.75;
-            player.vz *= 0.75;
-        }
-
-        player.vy -= player.gravity;
-        player.x += player.vx;
-        player.y += player.vy;
-        player.z += player.vz;
-
-        if (player.y <= 0) {
-            player.y = 0;
-            player.vy = 0;
-            player.onGround = true;
-        }
-
-        const limit = floorSize / 2 - 2;
-        player.x = Math.max(-limit, Math.min(limit, player.x));
-        player.z = Math.max(-limit, Math.min(limit, player.z));
-
-        // Оновлюємо позицію нашого кубика-гравця
-        myCube.position.set(player.x, player.y + 0.9, player.z);
-        myCube.rotation.y = yaw;
-
-        // Камера від 3-ї особи позаду кубика
-        const dist = 5.0;
-        const height = 2.5;
-        camera.position.x = player.x + Math.sin(yaw) * dist;
-        camera.position.y = player.y + height;
-        camera.position.z = player.z + Math.cos(yaw) * dist;
-        camera.lookAt(player.x, player.y + 1.0, player.z);
-
-        if (conn && conn.open) {
-            conn.send({ type: 'move', x: player.x, y: player.y, z: player.z, ry: yaw });
-        }
-
-        renderer.render(scene, camera);
-    }
-
-    animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+  const t=performance.now();
+  for(const id in remotes){
+    const r=remotes[id];
+    if(t-r.last>6000){removePlayer(id);continue}
+    const old=r.g.position.clone();
+    r.g.position.lerp(r.tp,1-Math.exp(-14*dt));
+    let dy=r.tyaw-r.g.rotation.y;dy=Math.atan2(Math.sin(dy),Math.cos(dy));r.g.rotation.y+=dy*(1-Math.exp(-14*dt));
+    const spd=old.setY(0).distanceTo(new THREE.Vector3(r.g.position.x,0,r.g.position.z))/dt;
+    if(spd>.5){r.phase+=dt*Math.min(spd,9)*1.6;r.legL.rotation.x=Math.sin(r.phase)*.8;r.legR.rotation.x=-Math.sin(r.phase)*.8}
+    else{r.legL.rotation.x=r.legR.rotation.x=0}
+  }
+  for(let i=tracers.length-1;i>=0;i--){
+    const k=tracers[i];k.t-=dt;k.l.material.opacity=Math.max(0,k.t/.12);
+    if(k.t<=0){scene.remove(k.l);k.l.geometry.dispose();tracers.splice(i,1)}
+  }
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
 </script>
-</body>
-</html>
+</body></html>
