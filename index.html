@@ -358,20 +358,30 @@ function alienStatue(){
 }
 var statueFailed=false;
 function statueFail(e){if(statueFailed)return;statueFailed=true;statueNote='skin.glb: '+((e&&e.message)||e)+' (показую заглушку)';console.warn(e);alienStatue();updInfo()}
-// чистимо glb: прибираємо анімації, морф-цілі й sparse-акцесори (вони ламають старий завантажувач)
+// перепаковуємо glb: точні довжини чанків, без анімацій / морф-цілей / sparse (старий завантажувач на них ламається)
 function cleanGLB(buf){
   const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x46546C67)return buf;
-  const jl=dv.getUint32(12,true),j=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,jl)));
+  const jl=dv.getUint32(12,true),j=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,jl)).replace(/[\0\s]+$/,''));
   delete j.animations;
   (j.meshes||[]).forEach(m=>{delete m.weights;(m.primitives||[]).forEach(p=>delete p.targets)});
   (j.nodes||[]).forEach(n=>delete n.weights);(j.accessors||[]).forEach(a=>delete a.sparse);
-  const t=new TextEncoder().encode(JSON.stringify(j)),jt=new Uint8Array(t.length+(4-t.length%4)%4).fill(32);jt.set(t);
-  const rest=new Uint8Array(buf,20+jl),out=new Uint8Array(20+jt.length+rest.length),o=new DataView(out.buffer);
-  o.setUint32(0,0x46546C67,true);o.setUint32(4,2,true);o.setUint32(8,out.length,true);o.setUint32(12,jt.length,true);o.setUint32(16,0x4E4F534A,true);
-  out.set(jt,20);out.set(rest,20+jt.length);return out.buffer;
+  const bs=20+jl;let bin=new Uint8Array(0);
+  if(bs+8<=buf.byteLength){const bl=dv.getUint32(bs,true);bin=new Uint8Array(buf,bs+8,Math.min(bl,buf.byteLength-bs-8))}
+  const bp=bin.length?(4-bin.length%4)%4:0,t=new TextEncoder().encode(JSON.stringify(j)),jt=new Uint8Array(t.length+(4-t.length%4)%4).fill(32);jt.set(t);
+  const p=20+jt.length,out=new Uint8Array(p+(bin.length?8+bin.length+bp:0)),o=new DataView(out.buffer);
+  o.setUint32(0,0x46546C67,true);o.setUint32(4,2,true);o.setUint32(8,out.length,true);o.setUint32(12,jt.length,true);o.setUint32(16,0x4E4F534A,true);out.set(jt,20);
+  if(bin.length){o.setUint32(p,bin.length+bp,true);o.setUint32(p+4,0x004E4942,true);out.set(bin,p+8)}
+  return out.buffer;
+}
+let glbErr=null,glbMB='?';
+function tryLoad(list){
+  const b=list.shift();if(!b){statueFail(new Error((glbErr&&glbErr.message||glbErr)+' ['+glbMB+' МБ]'));return}
+  const next=e=>{glbErr=e;tryLoad(list)};
+  try{new THREE.GLTFLoader().parse(b,'',g=>{try{placeStatue(g.scene)}catch(e){next(e)}},next)}catch(e){next(e)}
 }
 fetch('skin.glb').then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer()}).then(buf=>{
-  new THREE.GLTFLoader().parse(cleanGLB(buf),'',g=>{try{placeStatue(g.scene)}catch(e){statueFail(e)}},statueFail);
+  glbMB=(buf.byteLength/1048576).toFixed(1);let c=buf;try{c=cleanGLB(buf)}catch(e){glbErr=e}
+  tryLoad(c===buf?[buf]:[c,buf]);
 }).catch(statueFail);
 
 // ---------- головний цикл ----------
