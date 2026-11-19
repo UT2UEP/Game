@@ -55,7 +55,7 @@ button:hover{background:#7483ff}button.alt{background:#2a2e66}
 const $=id=>document.getElementById(id);
 // ---------- сцена ----------
 const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
-const PR=Math.min(devicePixelRatio,1.5);renderer.setPixelRatio(PR);renderer.setSize(innerWidth,innerHeight);
+let PR=Math.min(devicePixelRatio,1.5);renderer.setPixelRatio(PR);renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x060818);
@@ -228,7 +228,8 @@ addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement)mo
 addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false});
 addEventListener('mousemove',e=>{
   if(document.pointerLockElement!==renderer.domElement)return;
-  me.yaw-=e.movementX*.0022;me.pitch=Math.max(-1.55,Math.min(1.55,me.pitch-e.movementY*.0022));
+  const mx=Math.abs(e.movementX)>300?0:e.movementX,my=Math.abs(e.movementY)>300?0:e.movementY;
+  me.yaw-=mx*.0022;me.pitch=Math.max(-1.55,Math.min(1.55,me.pitch-my*.0022));
 });
 
 // ---------- стрільба ----------
@@ -272,7 +273,7 @@ function feed(t){
   setTimeout(()=>d.remove(),5000);while($('feed').children.length>6)$('feed').firstChild.remove();
 }
 function updInfo(){
-  $('info').innerHTML=(roomCode?'Кімната: <b>'+roomCode+'</b><br>':'')+'Гравців: '+(Object.keys(remotes).length+1);
+  $('info').innerHTML=(roomCode?'Кімната: <b>'+roomCode+'</b><br>':'')+'Гравців: '+(Object.keys(remotes).length+1)+'<br><small>Графіка: '+['ультра','висока','економ'][qLevel]+(statueNote?' · '+statueNote:'')+'</small>';
 }
 
 // ---------- зброя від 1-ї особи, світло пострілу ----------
@@ -308,21 +309,45 @@ const grade=new THREE.ShaderPass(GradeShader);composer.addPass(grade);
 const fxaa=new THREE.ShaderPass(THREE.FXAAShader);composer.addPass(fxaa);
 window.composer=composer;
 function resizeFX(){composer.setSize(innerWidth,innerHeight);fxaa.material.uniforms.resolution.value.set(1/(innerWidth*PR),1/(innerHeight*PR))}resizeFX();
-let hq=true;
-addEventListener('keydown',e=>{if(e.code==='KeyG'){hq=!hq;renderer.shadowMap.enabled=hq;bloom.enabled=hq;scene.traverse(o=>{if(o.material)o.material.needsUpdate=true});feed('Графіка: '+(hq?'ультра':'економ'))}});
+var qLevel=1,camY=0,fpsAcc=0,fpsN=0,fpsBad=0;
+function setQ(l){
+  qLevel=l;renderer.shadowMap.enabled=l<2;sun.castShadow=l<2;
+  const ms=l===0?4096:2048;
+  if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+  bloom.enabled=l<2;
+  PR=l===0?Math.min(devicePixelRatio,1.5):1;renderer.setPixelRatio(PR);renderer.setSize(innerWidth,innerHeight);composer.setPixelRatio(PR);resizeFX();
+  scene.traverse(o=>{if(o.material)o.material.needsUpdate=true});updInfo();
+}
+addEventListener('keydown',e=>{if(e.code==='KeyG'){setQ((qLevel+1)%3);feed('Графіка: '+['ультра','висока','економ'][qLevel])}});
+setQ(1);
 
 // ---------- статуя skin.glb у центрі карти ----------
+var statueNote='skin.glb: завантаження…';
 let statueMixer=null;
 {const sl=new THREE.SpotLight(0xffffff,3.5,45,.55,.6,1);sl.position.set(7,13,7);sl.target.position.set(0,4.5,0);scene.add(sl,sl.target)}
+function fitBox(m){
+  m.updateMatrixWorld(true);const b=new THREE.Box3(),v=new THREE.Vector3();
+  m.traverse(o=>{
+    if(!o.isMesh||!o.geometry.attributes.position)return;
+    const pos=o.geometry.attributes.position,st=Math.max(1,(pos.count/60000)|0),sk=o.isSkinnedMesh&&o.skeleton&&o.boneTransform;
+    if(sk)o.skeleton.update();
+    for(let i=0;i<pos.count;i+=st){v.fromBufferAttribute(pos,i);if(sk)o.boneTransform(i,v);b.expandByPoint(v.applyMatrix4(o.matrixWorld))}
+  });
+  return b;
+}
 new THREE.GLTFLoader().load('skin.glb',gltf=>{
-  const m=gltf.scene,box=new THREE.Box3().setFromObject(m),sz=box.getSize(new THREE.Vector3());
-  m.scale.setScalar(3/(sz.y||1));
-  box.setFromObject(m);const c=box.getCenter(new THREE.Vector3());
-  m.position.set(-c.x,3.1-box.min.y,-c.z);
-  m.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;o.frustumCulled=false;worldMeshes.push(o);if(o.material)o.material.envMapIntensity=1}});
-  scene.add(m);
-  if(gltf.animations.length){statueMixer=new THREE.AnimationMixer(m);statueMixer.clipAction(gltf.animations[0]).play()}
-},undefined,()=>console.warn('skin.glb не знайдено'));
+  try{
+    const m=gltf.scene;let b=fitBox(m);const sz=b.getSize(new THREE.Vector3());
+    const ok=!b.isEmpty()&&isFinite(sz.y)&&sz.y>1e-6;
+    m.scale.setScalar(ok?3/sz.y:1);
+    if(ok){b=fitBox(m);const c=b.getCenter(new THREE.Vector3());m.position.set(-c.x,3.1-b.min.y,-c.z)}else m.position.set(0,3.1,0);
+    m.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true;o.frustumCulled=false;worldMeshes.push(o);if(o.material){o.material.side=THREE.DoubleSide;o.material.envMapIntensity=1}}});
+    scene.add(m);m.updateMatrixWorld(true);
+    if(gltf.animations.length){statueMixer=new THREE.AnimationMixer(m);statueMixer.clipAction(gltf.animations[0]).play()}
+    statueNote='статуя: ок';
+  }catch(e){statueNote='skin.glb помилка: '+e.message;console.error(e)}
+  updInfo();
+},undefined,e=>{statueNote='skin.glb: '+((e&&e.message)||'не завантажився, перевір назву');console.warn(e);updInfo()});
 
 // ---------- головний цикл ----------
 let prev=performance.now(),sendT=0,bob=0;
@@ -339,23 +364,27 @@ function loop(now){
       const l=Math.hypot(f,r),s=Math.sin(me.yaw),c=Math.cos(me.yaw);
       vx=(-s*f+c*r)/l*sp;vz=(-c*f-s*r)/l*sp;
     }
-    me.p.x+=vx*dt;if(hits(me.p))me.p.x-=vx*dt;
-    me.p.z+=vz*dt;if(hits(me.p))me.p.z-=vz*dt;
+    const mv=(dx,dz)=>{me.p.x+=dx;me.p.z+=dz;if(hits(me.p)){if(me.ground){me.p.y+=.55;if(!hits(me.p))return;me.p.y-=.55}me.p.x-=dx;me.p.z-=dz}};
+    mv(vx*dt,0);mv(0,vz*dt);
     if(keys.Space&&me.ground){me.vy=8;me.ground=false}
     me.vy-=24*dt;me.p.y+=me.vy*dt;me.ground=false;
     if(me.p.y<=0){me.p.y=0;me.vy=0;me.ground=true}
-    for(const b of boxes){
-      if(me.p.x+R>b.minx&&me.p.x-R<b.maxx&&me.p.z+R>b.minz&&me.p.z-R<b.maxz&&me.p.y<b.maxy&&me.p.y+HT>b.miny){
-        if(me.vy<=0&&me.p.y>b.maxy-.6){me.p.y=b.maxy;me.vy=0;me.ground=true}
-        else if(me.vy>0){me.p.y=b.miny-HT;me.vy=0}
-      }
+    for(let it=0;it<3;it++)for(const b of boxes){
+      if(!(me.p.x+R>b.minx&&me.p.x-R<b.maxx&&me.p.z+R>b.minz&&me.p.z-R<b.maxz&&me.p.y<b.maxy-.001&&me.p.y+HT>b.miny))continue;
+      const up=b.maxy-me.p.y,dn=me.p.y+HT-b.miny;
+      const px=Math.min(me.p.x+R-b.minx,b.maxx-(me.p.x-R)),pz=Math.min(me.p.z+R-b.minz,b.maxz-(me.p.z-R)),hz=Math.min(px,pz);
+      if(up<=hz&&(up<=dn||me.vy<=0)){me.p.y=b.maxy;if(me.vy<0)me.vy=0;me.ground=true}
+      else if(dn<hz&&me.vy>0){me.p.y=b.miny-HT;me.vy=0}
+      else if(px<pz)me.p.x+=(me.p.x<(b.minx+b.maxx)/2?-px:px);
+      else me.p.z+=(me.p.z<(b.minz+b.maxz)/2?-pz:pz);
     }
     me.p.x=Math.max(-H+R,Math.min(H-R,me.p.x));me.p.z=Math.max(-H+R,Math.min(H-R,me.p.z));
     if(me.p.y<-30)spawn();
     bob+=(f||r)&&me.ground?dt*(sp>6?14:10):0;
     cool-=dt;if(mouseDown&&cool<=0){shoot();cool=.15}
   }
-  camera.position.set(me.p.x,me.p.y+EYE+Math.sin(bob)*.04,me.p.z);
+  if(me.ground&&Math.abs(me.p.y-camY)<.9)camY+=(me.p.y-camY)*(1-Math.exp(-28*dt));else camY=me.p.y;
+  camera.position.set(me.p.x,camY+EYE+Math.sin(bob)*.04,me.p.z);
   camera.rotation.set(me.pitch,me.yaw,0);
   sky.position.copy(camera.position);
 
@@ -383,6 +412,7 @@ function loop(now){
   spG.attributes.position.needsUpdate=true;
   dust.rotation.y+=dt*.01;dust.position.y=Math.sin(now*.0004)*.6;
   if(statueMixer)statueMixer.update(dt);
+  if(inGame&&locked){fpsAcc+=dt;fpsN++;if(fpsAcc>2){const fr=fpsN/fpsAcc;fpsBad=fr<40?fpsBad+1:0;if(fpsBad>=2&&qLevel<2){setQ(qLevel+1);feed('Графіку автоматично знижено: '+['ультра','висока','економ'][qLevel]);fpsBad=0}fpsAcc=fpsN=0}}
   grade.uniforms.time.value=(now%1000)/1000;
   composer.render();
 }
